@@ -2,8 +2,10 @@ package engine
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"github.com/upekZ/matching-engine/internal/models"
+	"log"
+	"sync"
 )
 
 type CacheStore interface {
@@ -12,60 +14,167 @@ type CacheStore interface {
 }
 
 type Engine struct {
-	orderBooks  map[string]*OrderBook
-	CacheClient CacheStore
+	orderBooks     map[string]*OrderBook
+	orderChannels  map[string]chan orderRequest
+	cancelChannels map[string]chan cancelRequest
+	CacheClient    CacheStore
+	mutex          sync.RWMutex
+	ctx            context.Context
+	cancel         context.CancelFunc
+}
+
+type orderRequest struct {
+	isNewOrder bool
+	order      *models.Order
+	tradeChan  chan *models.TradeManager
+	errorChan  chan error
+}
+
+type cancelRequest struct {
+	market    string
+	orderId   string
+	tradeChan chan *models.TradeManager
+	errorChan chan error
 }
 
 func New(cacheStore CacheStore) *Engine {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Engine{
-		orderBooks:  make(map[string]*OrderBook),
-		CacheClient: cacheStore,
+		orderBooks:     make(map[string]*OrderBook),
+		orderChannels:  make(map[string]chan orderRequest),
+		cancelChannels: make(map[string]chan cancelRequest),
+		CacheClient:    cacheStore,
+		ctx:            ctx,
+		cancel:         cancel,
 	}
 }
 
 func (e *Engine) PlaceOrder(order *models.Order) (*models.TradeManager, error) {
 
-	book, exists := e.orderBooks[order.GetMarket()]
+	e.mutex.RLock()
+	orderChan, exists := e.orderChannels[order.Market]
+	e.mutex.RUnlock()
+
 	if !exists {
-		book = NewOrderBook(order.GetMarket())
-		e.orderBooks[order.GetMarket()] = book
+		e.mutex.Lock()
+		if _, exists := e.orderChannels[order.Market]; !exists { //just to be sure
+			book := NewOrderBook(order.Market)
+			orderChan = make(chan orderRequest, 100)
+			e.orderBooks[order.Market] = book
+			e.orderChannels[order.Market] = orderChan
+
+			go e.runOrderBook(book, orderChan)
+
+		} else {
+			orderChan = e.orderChannels[order.Market]
+		}
+		e.mutex.Unlock()
 	}
 
-	var err error
-	var trades *models.TradeManager
-
-	if order.IsBuyOrder() {
-		trades, err = book.AddBuyOrder(order)
-	} else if order.IsSellOrder() {
-		trades, err = book.AddSellOrder(order)
+	tradeChan := make(chan *models.TradeManager, 1)
+	errorChan := make(chan error, 1)
+	orderChan <- orderRequest{
+		isNewOrder: true,
+		order:      order,
+		tradeChan:  tradeChan,
+		errorChan:  errorChan,
 	}
 
-	if err != nil {
-		return nil, err
-	}
+	select {
+	case trades := <-tradeChan:
+		e.mutex.RLock()
+		book := e.orderBooks[order.Market]
+		e.mutex.RUnlock()
+		//if err := e.CacheClient.SaveOrderBook(order.Market, book); err != nil {
+		//	return nil, err
+		//}
+		fmt.Printf("book name %s", book.market)
 
-	//ToDo Implement save-order-book
-
-	//if err := e.CacheClient.SaveOrderBook(order.GetMarket(), book); err != nil {
-	//	return nil, err
-	//}
-
-	if trades != nil {
-		if err := e.CacheClient.SaveTrades(order.GetMarket(), trades); err != nil {
+		if err := e.CacheClient.SaveTrades(order.Market, trades); err != nil {
 			return nil, err
 		}
-	}
 
-	return trades, nil
+		return trades, nil
+	case err := <-errorChan:
+		return nil, err
+	case <-e.ctx.Done():
+		return nil, e.ctx.Err()
+	}
 }
 
-func (e *Engine) CancelOrder(orderID string) error {
-	book, exists := e.orderBooks[orderID]
+func (e *Engine) CancelOrder(order *models.Order) (*models.TradeManager, error) {
+
+	e.mutex.RLock()
+	orderChan, exists := e.orderChannels[order.Market]
+	e.mutex.RUnlock()
+
 	if !exists {
-		return errors.New("order not found")
+		log.Printf("order not found for market %s", order.Market)
+		return nil, fmt.Errorf("order not found for market %s", order.Market)
 	}
-	book.CancelOrder(orderID)
-	return nil
+
+	tradeChan := make(chan *models.TradeManager, 1)
+	errorChan := make(chan error, 1)
+	orderChan <- orderRequest{
+		isNewOrder: false,
+		order:      order,
+		tradeChan:  tradeChan,
+		errorChan:  errorChan,
+	}
+
+	select {
+	case trades := <-tradeChan:
+		e.mutex.RLock()
+		book := e.orderBooks[order.Market]
+		e.mutex.RUnlock()
+		//if err := e.CacheClient.SaveOrderBook(order.Market, book); err != nil {
+		//	return nil, err
+		//}
+		fmt.Printf("book name %s", book.market)
+
+		if err := e.CacheClient.SaveTrades(order.Market, trades); err != nil {
+			return nil, err
+		}
+
+		return trades, nil
+	case err := <-errorChan:
+		return nil, err
+	case <-e.ctx.Done():
+		return nil, e.ctx.Err()
+	}
+}
+
+func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
+	for {
+		select {
+		case req := <-orderChan:
+			var trades *models.TradeManager
+			var err error
+
+			if req.isNewOrder {
+				trades, err = book.AddBuyOrder(req.order)
+			} else {
+				trades, err = book.CancelOrder(req.order)
+			}
+			if err != nil {
+				req.errorChan <- err
+				close(req.errorChan)
+				close(req.tradeChan)
+				continue
+			}
+
+			req.tradeChan <- trades
+			close(req.tradeChan)
+			close(req.errorChan)
+
+		case <-e.ctx.Done():
+			return
+		}
+	}
+}
+
+func (e *Engine) Shutdown() {
+	e.cancel()
 }
 
 func (e *Engine) PublishOrderResponse(ctx context.Context, market string, data []byte) error {

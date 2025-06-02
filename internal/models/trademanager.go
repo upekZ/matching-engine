@@ -13,7 +13,7 @@ func NewTradeManager() *TradeManager {
 }
 
 func (t *TradeManager) AddTrade(trade *Trade) {
-	t.volume += trade.GetQty()
+	t.volume += trade.Quantity
 	t.trades = append(t.trades, trade)
 }
 

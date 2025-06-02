@@ -15,7 +15,7 @@ import (
 
 type GlobalEngine interface {
 	PlaceOrder(order *models.Order) (*models.TradeManager, error)
-	CancelOrder(orderID string) error
+	CancelOrder(order *models.Order) (*models.TradeManager, error)
 	PublishOrderResponse(ctx context.Context, market string, data []byte) error
 }
 
@@ -30,7 +30,16 @@ func (s *OrderServiceHandler) PlaceOrder(ctx context.Context, req *OrderRequest)
 		return nil, status.Error(codes.InvalidArgument, "Invalid order parameters")
 	}
 
-	order := models.NewOrder(uuid.New().String(), req.GetMarket(), req.GetSide(), req.GetPrice(), int(req.Quantity), time.Now().UnixNano())
+	order := &models.Order{
+		ID:        uuid.New().String(),
+		ClientID:  req.ClientId,
+		Market:    req.GetMarket(),
+		Side:      req.GetSide(),
+		Price:     req.GetPrice(),
+		Quantity:  int(req.Quantity),
+		Timestamp: time.Now().UnixNano(),
+	}
+
 	trades, err := s.engine.PlaceOrder(order)
 
 	if err != nil {
@@ -38,11 +47,11 @@ func (s *OrderServiceHandler) PlaceOrder(ctx context.Context, req *OrderRequest)
 	}
 
 	resp := &OrderResponse{
-		OrderId: order.GetID(),
+		OrderId: order.ClientID,
 		Status:  "new",
 	}
 	if trades.GetVolume() > 0 {
-		if order.GetQty() > trades.GetVolume() {
+		if order.Quantity > trades.GetVolume() {
 			resp.Status = "partially_filled"
 		} else {
 			resp.Status = "filled"
@@ -50,13 +59,13 @@ func (s *OrderServiceHandler) PlaceOrder(ctx context.Context, req *OrderRequest)
 		resp.Trades = make([]*Trade, len(trades.GetTrades()))
 		for i, t := range trades.GetTrades() {
 			resp.Trades[i] = &Trade{
-				Id:        t.GetID(),
-				Market:    order.GetMarket(),
-				Price:     t.GetPrice(),
-				Quantity:  int32(t.GetQty()),
-				BuyOrder:  t.GetBuyOrderID(),
-				SellOrder: t.GetSellOrderID(),
-				Timestamp: t.GetTimestamp(),
+				Id:        t.ID,
+				Market:    order.Market,
+				Price:     t.Price,
+				Quantity:  int32(t.Quantity),
+				BuyOrder:  t.BuyOrder,
+				SellOrder: t.SellOrder,
+				Timestamp: t.Timestamp,
 			}
 		}
 	}
@@ -73,19 +82,54 @@ func (s *OrderServiceHandler) PlaceOrder(ctx context.Context, req *OrderRequest)
 	return resp, nil
 }
 
-func (s *OrderServiceHandler) CancelOrder(ctx context.Context, id string) (*OrderResponse, error) {
+func (s *OrderServiceHandler) CancelOrder(ctx context.Context, req *OrderRequest) (*OrderResponse, error) {
 
-	err := s.engine.CancelOrder(id)
+	order := &models.Order{
+		ID:        uuid.New().String(),
+		ClientID:  req.ClientId,
+		Market:    req.GetMarket(),
+		Side:      req.GetSide(),
+		Price:     req.GetPrice(),
+		Quantity:  int(req.Quantity),
+		Timestamp: time.Now().UnixNano(),
+	}
+
+	trades, err := s.engine.CancelOrder(order)
 
 	if err != nil {
 		log.Printf(status.Errorf(codes.Internal, "Failed to cancel order %v", err).Error())
 		return nil, status.Error(codes.Internal, "Failed to cancel order")
 	}
+	resp := &OrderResponse{
+		OrderId: order.ID,
+		Status:  "new",
+	}
+	if trades.GetVolume() > 0 {
+		resp.Status = "cancelled"
+		resp.Trades = make([]*Trade, len(trades.GetTrades()))
+		for i, t := range trades.GetTrades() {
+			resp.Trades[i] = &Trade{
+				Id:        t.ID,
+				Market:    order.Market,
+				Price:     t.Price,
+				Quantity:  int32(t.Quantity),
+				BuyOrder:  t.BuyOrder,
+				SellOrder: t.SellOrder,
+				Timestamp: t.Timestamp,
+			}
+		}
+	}
 
-	return &OrderResponse{
-		OrderId: id,
-		Status:  "cancelled",
-	}, nil
+	data, err := json.Marshal(resp)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to serialize response")
+	}
+	if err := s.engine.PublishOrderResponse(ctx, req.Market, data); err != nil {
+		log.Printf("Failed to publish data: %v", err)
+		return nil, status.Error(codes.Internal, "Failed to forward response")
+	}
+
+	return resp, nil
 }
 
 func NewServer(port string, eng GlobalEngine) (*grpc.Server, error) {

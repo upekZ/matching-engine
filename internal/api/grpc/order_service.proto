@@ -6,13 +6,15 @@ option go_package = "grpc";
 
 service OrderService {
   rpc PlaceOrder (OrderRequest) returns (OrderResponse);
+  rpc CancelOrder (OrderRequest) returns (OrderResponse);
 }
 
 message OrderRequest {
   string market = 1;
   string side = 2;
-  double price = 3;
-  int32 quantity = 4;
+  string client_id = 3;
+  double price = 4;
+  int32 quantity = 5;
 }
 
 message Trade {

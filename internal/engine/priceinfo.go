@@ -25,5 +25,5 @@ func (info *PriceInfo) Remove(order *models.OrderElement) {
 	defer info.mu.Unlock()
 
 	info.orderList.Remove(order)
-	info.volume -= order.Value().GetQty()
+	info.volume -= order.Value().Quantity
 }

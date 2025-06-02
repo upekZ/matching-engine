@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/upekZ/matching-engine/internal/api/grpc"
+	"github.com/upekZ/matching-engine/internal/api/rest"
 	"github.com/upekZ/matching-engine/internal/engine"
 	redis "github.com/upekZ/matching-engine/internal/storage/redis-store"
 )
@@ -19,5 +20,9 @@ func main() {
 		panic(err)
 	}
 
-	select {}
+	server := rest.NewServer(eng)
+
+	if err := server.Start(); err != nil {
+		panic(err)
+	}
 }
