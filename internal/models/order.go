@@ -55,6 +55,10 @@ func (o *Order) GetMarket() string {
 	return o.market
 }
 
-func (o *Order) GetSide() string {
-	return o.side
+func (o *Order) IsBuyOrder() bool {
+	return o.side == "buy"
+}
+
+func (o *Order) IsSellOrder() bool {
+	return o.side == "sell"
 }

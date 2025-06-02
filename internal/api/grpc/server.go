@@ -31,7 +31,6 @@ func (s *OrderServiceHandler) PlaceOrder(ctx context.Context, req *OrderRequest)
 	}
 
 	order := models.NewOrder(uuid.New().String(), req.GetMarket(), req.GetSide(), req.GetPrice(), int(req.Quantity), time.Now().UnixNano())
-
 	trades, err := s.engine.PlaceOrder(order)
 
 	if err != nil {
@@ -74,14 +73,19 @@ func (s *OrderServiceHandler) PlaceOrder(ctx context.Context, req *OrderRequest)
 	return resp, nil
 }
 
-func (s *OrderServiceHandler) CancelOrder(ctx context.Context, id string) error {
+func (s *OrderServiceHandler) CancelOrder(ctx context.Context, id string) (*OrderResponse, error) {
 
 	err := s.engine.CancelOrder(id)
 
 	if err != nil {
 		log.Printf(status.Errorf(codes.Internal, "Failed to cancel order %v", err).Error())
-		return status.Error(codes.Internal, "Failed to cancel order")
+		return nil, status.Error(codes.Internal, "Failed to cancel order")
 	}
+
+	return &OrderResponse{
+		OrderId: id,
+		Status:  "cancelled",
+	}, nil
 }
 
 func NewServer(port string, eng GlobalEngine) (*grpc.Server, error) {

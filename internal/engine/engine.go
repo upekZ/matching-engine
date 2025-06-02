@@ -34,9 +34,9 @@ func (e *Engine) PlaceOrder(order *models.Order) (*models.TradeManager, error) {
 	var err error
 	var trades *models.TradeManager
 
-	if order.GetSide() == "buy" {
+	if order.IsBuyOrder() {
 		trades, err = book.AddBuyOrder(order)
-	} else if order.GetSide() == "sell" {
+	} else if order.IsSellOrder() {
 		trades, err = book.AddSellOrder(order)
 	}
 
