@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package grpc;
 
-option go_package = "crypto study's internal/api/grpc";
+option go_package = "grpc";
 
 service OrderService {
   rpc PlaceOrder (OrderRequest) returns (OrderResponse);
@@ -12,14 +12,14 @@ message OrderRequest {
   string market = 1;
   string side = 2;
   double price = 3;
-  double quantity = 4;
+  int32 quantity = 4;
 }
 
 message Trade {
   string id = 1;
   string market = 2;
   double price = 3;
-  double quantity = 4;
+  int32 quantity = 4;
   string buy_order = 5;
   string sell_order = 6;
   int64 timestamp = 7;
@@ -28,5 +28,5 @@ message Trade {
 message OrderResponse {
   string order_id = 1;
   string status = 2;
-  Trade trade = 3;
+  repeated Trade trades = 3;
 }

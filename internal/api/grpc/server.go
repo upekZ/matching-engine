@@ -2,62 +2,81 @@ package grpc
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/google/uuid"
-	"github.com/upekZ/matching-engine/internal/engine"
 	"github.com/upekZ/matching-engine/internal/models"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"log"
 	"net"
 	"time"
 )
 
-// OrderServiceServer defines the gRPC service.
-type OrderServiceServer struct {
-	engine *engine.Engine
+type GlobalEngine interface {
+	PlaceOrder(order *models.Order) (*models.TradeManager, error)
+	CancelOrder(orderID string) error
+	PublishOrderResponse(ctx context.Context, market string, data []byte) error
+}
+
+type OrderServiceHandler struct {
+	engine GlobalEngine
 	UnimplementedOrderServiceServer
 }
 
-// PlaceOrder handles incoming order requests.
-func (s *OrderServiceServer) PlaceOrder(ctx context.Context, req *OrderRequest) (*OrderResponse, error) {
-	// Validate order
+func (s *OrderServiceHandler) PlaceOrder(ctx context.Context, req *OrderRequest) (*OrderResponse, error) {
+
 	if req.Price <= 0 || req.Quantity <= 0 || (req.Side != "buy" && req.Side != "sell") {
 		return nil, status.Error(codes.InvalidArgument, "Invalid order parameters")
 	}
 
-	// Create order
-	order := models.NewOrder(uuid.New().String(), req.Market, req.Side, req.Price, req.Quantity, time.Now().UnixNano())
+	order := models.NewOrder(uuid.New().String(), req.GetMarket(), req.GetSide(), req.GetPrice(), int(req.Quantity), time.Now().UnixNano())
 
-	// Forward to engine
-	trade, err := s.engine.PlaceOrder(order)
+	trades, err := s.engine.PlaceOrder(order)
+
 	if err != nil {
-		return nil, status.Error(codes.Internal, "Failed to process order")
+		return nil, err
 	}
 
-	// Prepare response
 	resp := &OrderResponse{
-		OrderID: order.ID,
-		Status:  "open",
+		OrderId: order.GetID(),
+		Status:  "new",
 	}
-	if trade != nil {
-		resp.Status = "filled"
-		resp.Trade = &Trade{
-			ID:        trade.ID,
-			Market:    trade.market,
-			Price:     trade.price,
-			Quantity:  trade.quantity,
-			BuyOrder:  trade.buyOrder,
-			SellOrder: trade.sellOrder,
-			Timestamp: trade.timestamp,
+	if trades.GetVolume() > 0 {
+		if order.GetQty() > trades.GetVolume() {
+			resp.Status = "partially_filled"
+		} else {
+			resp.Status = "filled"
 		}
+		resp.Trades = make([]*Trade, len(trades.GetTrades()))
+		for i, t := range trades.GetTrades() {
+			resp.Trades[i] = &Trade{
+				Id:        t.GetID(),
+				Market:    order.GetMarket(),
+				Price:     t.GetPrice(),
+				Quantity:  int32(t.GetQty()),
+				BuyOrder:  t.GetBuyOrderID(),
+				SellOrder: t.GetSellOrderID(),
+				Timestamp: t.GetTimestamp(),
+			}
+		}
+	}
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to serialize response")
+	}
+	if err := s.engine.PublishOrderResponse(ctx, req.Market, data); err != nil {
+		log.Printf("Failed to publish data: %v", err)
+		return nil, status.Error(codes.Internal, "Failed to forward response")
 	}
 
 	return resp, nil
 }
 
-// NewServer initializes the gRPC server.
-func NewServer(port string, eng *engine.Engine) (*grpc.Server, error) {
+func NewServer(port string, eng GlobalEngine) (*grpc.Server, error) {
 	srv := grpc.NewServer()
-	RegisterOrderServiceServer(srv, &OrderServiceServer{engine: eng})
+	RegisterOrderServiceServer(srv, &OrderServiceHandler{engine: eng})
 	go func() {
 		lis, err := net.Listen("tcp", ":"+port)
 		if err != nil {

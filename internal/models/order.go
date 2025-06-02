@@ -54,3 +54,7 @@ func (o *Order) GetQty() int {
 func (o *Order) GetMarket() string {
 	return o.market
 }
+
+func (o *Order) GetSide() string {
+	return o.side
+}
