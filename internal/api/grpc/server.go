@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/upekZ/matching-engine/internal/models"
 	"google.golang.org/grpc"
@@ -17,6 +18,10 @@ type GlobalEngine interface {
 	PlaceOrder(order *models.Order) (*models.TradeManager, error)
 	CancelOrder(order *models.Order) (*models.TradeManager, error)
 	PublishOrderResponse(ctx context.Context, market string, data []byte) error
+	SubscribeToResponses(ctx context.Context, market string, responseChannel chan models.OrderResponse) error
+}
+
+type CacheStore interface {
 }
 
 type OrderServiceHandler struct {
@@ -34,7 +39,7 @@ func (s *OrderServiceHandler) PlaceOrder(ctx context.Context, req *OrderRequest)
 		ID:        uuid.New().String(),
 		ClientID:  req.ClientId,
 		Market:    req.GetMarket(),
-		Side:      req.GetSide(),
+		Side:      models.OrderType(req.GetSide()),
 		Price:     req.GetPrice(),
 		Quantity:  int(req.Quantity),
 		Timestamp: time.Now().UnixNano(),
@@ -45,6 +50,22 @@ func (s *OrderServiceHandler) PlaceOrder(ctx context.Context, req *OrderRequest)
 	if err != nil {
 		return nil, err
 	}
+
+	response := s.convertToResponse(order, trades)
+
+	data, err := json.Marshal(response)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to serialize response")
+	}
+	if err := s.engine.PublishOrderResponse(ctx, req.Market, data); err != nil {
+		log.Printf("Failed to publish data: %v", err)
+		return nil, status.Error(codes.Internal, "Failed to forward response")
+	}
+
+	return response, nil
+}
+
+func (s *OrderServiceHandler) convertToResponse(order *models.Order, trades *models.TradeManager) *OrderResponse {
 
 	resp := &OrderResponse{
 		OrderId: order.ClientID,
@@ -70,16 +91,7 @@ func (s *OrderServiceHandler) PlaceOrder(ctx context.Context, req *OrderRequest)
 		}
 	}
 
-	data, err := json.Marshal(resp)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "Failed to serialize response")
-	}
-	if err := s.engine.PublishOrderResponse(ctx, req.Market, data); err != nil {
-		log.Printf("Failed to publish data: %v", err)
-		return nil, status.Error(codes.Internal, "Failed to forward response")
-	}
-
-	return resp, nil
+	return resp
 }
 
 func (s *OrderServiceHandler) CancelOrder(ctx context.Context, req *OrderRequest) (*OrderResponse, error) {
@@ -88,7 +100,7 @@ func (s *OrderServiceHandler) CancelOrder(ctx context.Context, req *OrderRequest
 		ID:        uuid.New().String(),
 		ClientID:  req.ClientId,
 		Market:    req.GetMarket(),
-		Side:      req.GetSide(),
+		Side:      models.OrderType(req.GetSide()),
 		Price:     req.GetPrice(),
 		Quantity:  int(req.Quantity),
 		Timestamp: time.Now().UnixNano(),
@@ -145,4 +157,55 @@ func NewServer(port string, eng GlobalEngine) (*grpc.Server, error) {
 		}
 	}()
 	return srv, nil
+}
+
+func (s *OrderServiceHandler) ListenToOrders(ctx context.Context, market string, responseChannel chan models.OrderResponse) error {
+}
+
+func (s *OrderServiceHandler) SubscribeOrderUpdates(req *MarketRequest, stream OrderService_SubscribeOrderUpdatesServer) error {
+	if req.Market == "" {
+		return status.Error(codes.InvalidArgument, "Market must be specified")
+	}
+
+	ctx := stream.Context()
+	responseChannel := make(chan models.OrderResponse, 100)
+	errorChannel := make(chan error, 1)
+
+	fmt.Printf("runnig grpcs")
+
+	go func() {
+		err := s.engine.SubscribeToResponses(ctx, req.Market, responseChannel)
+		if err != nil {
+			errorChannel <- err
+		}
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-errorChannel:
+			return err
+		case response := <-responseChannel:
+			grpcResp := &OrderResponse{
+				OrderId: response.OrderID,
+				Status:  response.Status,
+				Trades:  make([]*Trade, len(response.Trades)),
+			}
+			for i, t := range response.Trades {
+				grpcResp.Trades[i] = &Trade{
+					Id:        t.ID,
+					Market:    t.Market,
+					Price:     t.Price,
+					Quantity:  int32(t.Quantity),
+					BuyOrder:  t.BuyOrder,
+					SellOrder: t.SellOrder,
+					Timestamp: t.Timestamp,
+				}
+			}
+			if err := stream.Send(grpcResp); err != nil {
+				return status.Errorf(codes.Internal, "Failed to send response: %v", err)
+			}
+		}
+	}
 }

@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion7
 type OrderServiceClient interface {
 	PlaceOrder(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderResponse, error)
 	CancelOrder(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderResponse, error)
+	SubscribeOrderUpdates(ctx context.Context, in *MarketRequest, opts ...grpc.CallOption) (OrderService_SubscribeOrderUpdatesClient, error)
 }
 
 type orderServiceClient struct {
@@ -48,12 +49,45 @@ func (c *orderServiceClient) CancelOrder(ctx context.Context, in *OrderRequest, 
 	return out, nil
 }
 
+func (c *orderServiceClient) SubscribeOrderUpdates(ctx context.Context, in *MarketRequest, opts ...grpc.CallOption) (OrderService_SubscribeOrderUpdatesClient, error) {
+	stream, err := c.cc.NewStream(ctx, &OrderService_ServiceDesc.Streams[0], "/grpc.OrderService/SubscribeOrderUpdates", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &orderServiceSubscribeOrderUpdatesClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type OrderService_SubscribeOrderUpdatesClient interface {
+	Recv() (*OrderResponse, error)
+	grpc.ClientStream
+}
+
+type orderServiceSubscribeOrderUpdatesClient struct {
+	grpc.ClientStream
+}
+
+func (x *orderServiceSubscribeOrderUpdatesClient) Recv() (*OrderResponse, error) {
+	m := new(OrderResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // OrderServiceServer is the server API for OrderService service.
 // All implementations must embed UnimplementedOrderServiceServer
 // for forward compatibility
 type OrderServiceServer interface {
 	PlaceOrder(context.Context, *OrderRequest) (*OrderResponse, error)
 	CancelOrder(context.Context, *OrderRequest) (*OrderResponse, error)
+	SubscribeOrderUpdates(*MarketRequest, OrderService_SubscribeOrderUpdatesServer) error
 	mustEmbedUnimplementedOrderServiceServer()
 }
 
@@ -66,6 +100,9 @@ func (UnimplementedOrderServiceServer) PlaceOrder(context.Context, *OrderRequest
 }
 func (UnimplementedOrderServiceServer) CancelOrder(context.Context, *OrderRequest) (*OrderResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CancelOrder not implemented")
+}
+func (UnimplementedOrderServiceServer) SubscribeOrderUpdates(*MarketRequest, OrderService_SubscribeOrderUpdatesServer) error {
+	return status.Errorf(codes.Unimplemented, "method SubscribeOrderUpdates not implemented")
 }
 func (UnimplementedOrderServiceServer) mustEmbedUnimplementedOrderServiceServer() {}
 
@@ -116,6 +153,27 @@ func _OrderService_CancelOrder_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OrderService_SubscribeOrderUpdates_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(MarketRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(OrderServiceServer).SubscribeOrderUpdates(m, &orderServiceSubscribeOrderUpdatesServer{stream})
+}
+
+type OrderService_SubscribeOrderUpdatesServer interface {
+	Send(*OrderResponse) error
+	grpc.ServerStream
+}
+
+type orderServiceSubscribeOrderUpdatesServer struct {
+	grpc.ServerStream
+}
+
+func (x *orderServiceSubscribeOrderUpdatesServer) Send(m *OrderResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // OrderService_ServiceDesc is the grpc.ServiceDesc for OrderService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -132,6 +190,12 @@ var OrderService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _OrderService_CancelOrder_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "SubscribeOrderUpdates",
+			Handler:       _OrderService_SubscribeOrderUpdates_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "order_service.proto",
 }

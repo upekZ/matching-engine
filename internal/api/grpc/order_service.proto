@@ -7,6 +7,7 @@ option go_package = "grpc";
 service OrderService {
   rpc PlaceOrder (OrderRequest) returns (OrderResponse);
   rpc CancelOrder (OrderRequest) returns (OrderResponse);
+  rpc SubscribeOrderUpdates (MarketRequest) returns (stream OrderResponse);
 }
 
 message OrderRequest {
@@ -15,6 +16,10 @@ message OrderRequest {
   string client_id = 3;
   double price = 4;
   int32 quantity = 5;
+}
+
+message MarketRequest {
+  string market = 1;
 }
 
 message Trade {

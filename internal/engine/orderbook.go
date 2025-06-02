@@ -6,6 +6,7 @@ import (
 	rbt "github.com/emirpasic/gods/trees/redblacktree"
 	"github.com/google/uuid"
 	"github.com/upekZ/matching-engine/internal/models"
+	"log"
 	"sync"
 	"time"
 )
@@ -17,6 +18,7 @@ type OrderBook struct {
 	SellPrices        *rbt.Tree
 	BuyPrices         *rbt.Tree
 	OrderIndex        map[string]*models.OrderElement
+	ClientIDs         map[string]string
 }
 
 func NewOrderBook(market string) *OrderBook {
@@ -25,7 +27,7 @@ func NewOrderBook(market string) *OrderBook {
 		if aPrice < bPrice {
 			return -1
 		}
-		if aPrice >= bPrice {
+		if aPrice > bPrice {
 			return 1
 		}
 		return 0
@@ -36,7 +38,7 @@ func NewOrderBook(market string) *OrderBook {
 		if aPrice < bPrice {
 			return -1
 		}
-		if aPrice >= bPrice {
+		if aPrice > bPrice {
 			return 1
 		}
 		return 0
@@ -49,6 +51,7 @@ func NewOrderBook(market string) *OrderBook {
 		SellPrices:        rbt.NewWith(sellComparator),
 		BuyPrices:         rbt.NewWith(buyComparator),
 		OrderIndex:        make(map[string]*models.OrderElement),
+		ClientIDs:         make(map[string]string),
 	}
 }
 
@@ -60,17 +63,13 @@ func (ob *OrderBook) AddBuyOrder(order *models.Order) (*models.TradeManager, err
 		return nil, err
 	}
 
-	if trades.GetVolume() == 0 {
-		if ob.BuyOrdersByPrice[order.Price] == nil {
-			ob.BuyOrdersByPrice[order.Price] = NewPriceInfo()
-			ob.BuyPrices.Put(order.Price, true)
+	if trades.GetVolume() < order.Quantity {
+
+		order.Quantity -= trades.GetVolume()
+		if err := ob.addToOrderBook(order); err != nil {
+			log.Printf("Error adding order to orderbook: %v", err)
+			return trades, fmt.Errorf("order request partially executed")
 		}
-		priceRef := ob.BuyOrdersByPrice[order.Price]
-
-		priceRef.volume += order.Quantity
-		element := priceRef.orderList.Push(order)
-
-		ob.OrderIndex[order.ID] = element
 	}
 	return trades, nil
 }
@@ -83,23 +82,54 @@ func (ob *OrderBook) AddSellOrder(order *models.Order) (*models.TradeManager, er
 		return nil, err
 	}
 
-	if trades.GetVolume() == 0 {
-		if ob.SellOrdersByPrice[order.Price] == nil {
-			ob.SellOrdersByPrice[order.Price] = NewPriceInfo()
-			ob.SellPrices.Put(order.Price, true)
+	if trades.GetVolume() < order.Quantity {
+
+		order.Quantity -= trades.GetVolume()
+		if err := ob.addToOrderBook(order); err != nil {
+			log.Printf("Error adding order to orderbook: %v", err)
+			return trades, fmt.Errorf("order request partially executed")
 		}
-		priceRef := ob.SellOrdersByPrice[order.Price]
-
-		priceRef.volume += order.Quantity
-		element := priceRef.orderList.Push(order)
-
-		ob.OrderIndex[order.ID] = element
 	}
 	return trades, nil
 }
 
+func (ob *OrderBook) addToOrderBook(order *models.Order) error {
+
+	var priceRef *PriceInfo
+
+	switch order.Side {
+	case models.SellOrder:
+		if ob.SellOrdersByPrice[order.Price] == nil {
+			ob.SellOrdersByPrice[order.Price] = NewPriceInfo()
+			ob.SellPrices.Put(order.Price, true)
+		}
+		priceRef = ob.SellOrdersByPrice[order.Price]
+	case models.BuyOrder:
+		if ob.BuyOrdersByPrice[order.Price] == nil {
+			ob.BuyOrdersByPrice[order.Price] = NewPriceInfo()
+			ob.BuyPrices.Put(order.Price, true)
+		}
+		priceRef = ob.BuyOrdersByPrice[order.Price]
+	default:
+		return fmt.Errorf("order: %s not added to order-book invalid order type", order.ID)
+	}
+
+	priceRef.volume += order.Quantity
+	element := priceRef.orderList.Push(order)
+
+	ob.OrderIndex[order.ID] = element
+	ob.ClientIDs[order.ClientID] = order.ID
+	return nil
+}
+
 func (ob *OrderBook) CancelOrder(order *models.Order) (*models.TradeManager, error) {
-	orderInfo, exists := ob.OrderIndex[order.ID]
+
+	orderID, ok := ob.ClientIDs[order.ClientID]
+	if !ok {
+		return nil, fmt.Errorf("order %s not found in order-book", order.ID)
+	}
+
+	orderInfo, exists := ob.OrderIndex[orderID]
 	if !exists {
 		return nil, fmt.Errorf("order: %s doesn't exist", order.ID)
 	}
@@ -134,7 +164,7 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 	orderPrice := order.Price
 
 	var wg sync.WaitGroup
-	var toDelete []float64
+	var toDeletePrices []float64
 	trades := models.NewTradeManager()
 
 	tradeChan := make(chan *models.TradeManager, 264)
@@ -147,11 +177,17 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 	}()
 
 	var keys []interface{}
+	var ordersByPrice map[float64]*PriceInfo
 
-	if order.Side == "buy" {
+	switch order.Side {
+	case models.BuyOrder:
 		keys = ob.SellPrices.Keys()
-	} else if order.Side == "sell" {
+		ordersByPrice = ob.SellOrdersByPrice
+	case models.SellOrder:
 		keys = ob.BuyPrices.Keys()
+		ordersByPrice = ob.BuyOrdersByPrice
+	default:
+		return nil, fmt.Errorf("order: %s not added to order-book invalid order type", order.ID)
 	}
 
 	for _, key := range keys {
@@ -160,14 +196,14 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 			break
 		}
 
-		bucket := ob.SellOrdersByPrice[existingPrice]
+		bucketVolume := ordersByPrice[existingPrice].volume
 
 		reqVolFromBucket := 0
-		fmt.Printf("reqQuantity: %d, bucket volume: %d\n", reqQuantity, bucket.volume)
-		if reqQuantity > bucket.volume {
-			reqVolFromBucket = bucket.volume
-			reqQuantity -= bucket.volume
-			toDelete = append(toDelete, existingPrice) //ToDo modify iterator to delete the existingPrice on the go
+		fmt.Printf("reqQuantity: %d, bucket volume: %d\n", reqQuantity, bucketVolume)
+		if reqQuantity > bucketVolume {
+			reqVolFromBucket = bucketVolume
+			reqQuantity -= bucketVolume
+			toDeletePrices = append(toDeletePrices, existingPrice) //ToDo modify iterator to delete the existingPrice on the go
 		} else {
 			reqVolFromBucket = reqQuantity
 			reqQuantity = 0
@@ -176,7 +212,7 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 		wg.Add(1)
 		go func(price float64, id string, vol int) {
 			defer wg.Done()
-			priceTrades, err := ob.matchOrdersInPrice(price, id, reqVolFromBucket)
+			priceTrades, err := ob.matchOrdersInPrice(price, id, reqVolFromBucket, order.Side)
 			if err != nil {
 				errChan <- err
 			}
@@ -191,16 +227,26 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 	wg.Wait()
 	close(tradeChan)
 
-	for _, id := range toDelete {
+	for _, id := range toDeletePrices {
 		ob.SellPrices.Remove(id)
 	}
 
 	return trades, nil
 }
 
-func (ob *OrderBook) matchOrdersInPrice(price float64, OrderID string, reqVolFromPrice int) (*models.TradeManager, error) {
+func (ob *OrderBook) matchOrdersInPrice(price float64, OrderID string, reqVolFromPrice int, orderType models.OrderType) (*models.TradeManager, error) {
 
-	priceInfo := ob.SellOrdersByPrice[price]
+	var ordersByPrice map[float64]*PriceInfo
+
+	switch orderType {
+	case models.BuyOrder:
+		ordersByPrice = ob.SellOrdersByPrice
+	case models.SellOrder:
+		ordersByPrice = ob.BuyOrdersByPrice
+	default:
+		return nil, fmt.Errorf("order matching failed\n")
+	}
+	priceInfo := ordersByPrice[price]
 
 	fmt.Printf("matching orders %d", priceInfo.volume)
 

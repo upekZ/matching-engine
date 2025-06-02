@@ -3,8 +3,13 @@ package redis_store
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"github.com/redis/go-redis/v9"
 	"github.com/upekZ/matching-engine/internal/models"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"log"
 )
 
 type Serializable interface {
@@ -58,4 +63,33 @@ func (c *Client) SaveTrades(market string, trades *models.TradeManager) error {
 
 func (c *Client) PublishOrderResponse(ctx context.Context, market string, data []byte) error {
 	return c.client.Publish(ctx, "order_responses:"+market, data).Err()
+}
+
+func (c *Client) SubscribeToResponses(ctx context.Context, market string, responseChannel chan models.OrderResponse) error {
+	if market == "" {
+		return status.Error(codes.InvalidArgument, "Market must be specified")
+	}
+
+	fmt.Printf("runnig grpcs - cache")
+
+	pubsub := c.client.Subscribe(ctx, "order_responses:"+market)
+	defer pubsub.Close()
+
+	for {
+		msg, err := pubsub.ReceiveMessage(ctx)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return nil // Client disconnected
+			}
+			return status.Errorf(codes.Internal, "Failed to receive message: %v", err)
+		}
+
+		var modelResp models.OrderResponse
+		if err := json.Unmarshal([]byte(msg.Payload), &modelResp); err != nil {
+			log.Printf("Failed to unmarshal response: %v", err)
+			continue
+		}
+
+		responseChannel <- modelResp
+	}
 }
