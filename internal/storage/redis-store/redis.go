@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/redis/go-redis/v9"
 	"github.com/upekZ/matching-engine/internal/models"
 	"google.golang.org/grpc/codes"
@@ -62,15 +61,16 @@ func (c *Client) SaveTrades(market string, trades *models.TradeManager) error {
 }
 
 func (c *Client) PublishOrderResponse(ctx context.Context, market string, data []byte) error {
-	return c.client.Publish(ctx, "order_responses:"+market, data).Err()
+	if err := c.client.Publish(ctx, "order_responses:"+market, data).Err(); err != nil {
+		return err
+	}
+	return nil
 }
 
-func (c *Client) SubscribeToResponses(ctx context.Context, market string, responseChannel chan models.OrderResponse) error {
+func (c *Client) SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.OrderResponse) error {
 	if market == "" {
 		return status.Error(codes.InvalidArgument, "Market must be specified")
 	}
-
-	fmt.Printf("runnig grpcs - cache")
 
 	pubsub := c.client.Subscribe(ctx, "order_responses:"+market)
 	defer pubsub.Close()

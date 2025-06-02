@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/upekZ/matching-engine/internal/models"
 	"log"
@@ -11,14 +12,13 @@ import (
 type CacheStore interface {
 	SaveTrades(market string, trades *models.TradeManager) error
 	PublishOrderResponse(ctx context.Context, market string, data []byte) error
-	SubscribeToResponses(ctx context.Context, market string, responseChannel chan models.OrderResponse) error
+	SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.OrderResponse) error
 }
 
 type Engine struct {
 	orderBooks     map[string]*OrderBook
 	orderChannels  map[string]chan orderRequest
-	cancelChannels map[string]chan cancelRequest
-	tradeChannels  map[string]chan orderRequest
+	tradesChannels map[string]chan models.TradeManager
 	CacheClient    CacheStore
 	mutex          sync.RWMutex
 	ctx            context.Context
@@ -32,28 +32,18 @@ type orderRequest struct {
 	errorChan  chan error
 }
 
-type cancelRequest struct {
-	market    string
-	orderId   string
-	tradeChan chan *models.TradeManager
-	errorChan chan error
-}
-
 func New(cacheStore CacheStore) *Engine {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Engine{
-		orderBooks:     make(map[string]*OrderBook),
-		orderChannels:  make(map[string]chan orderRequest),
-		cancelChannels: make(map[string]chan cancelRequest),
-		CacheClient:    cacheStore,
-		ctx:            ctx,
-		cancel:         cancel,
+		orderBooks:    make(map[string]*OrderBook),
+		orderChannels: make(map[string]chan orderRequest),
+		CacheClient:   cacheStore,
+		ctx:           ctx,
+		cancel:        cancel,
 	}
 }
 
 func (e *Engine) PlaceOrder(order *models.Order) (*models.TradeManager, error) {
-
-	fmt.Println("Placed Order\n", order)
 
 	/*
 		proposed solution creates market specific channels dynamically if not in existence.
@@ -108,7 +98,7 @@ func (e *Engine) readResponse(order *models.Order, channel chan orderRequest) (*
 		//if err := e.CacheClient.SaveOrderBook(order.Market, book); err != nil {
 		//	return nil, err
 		//}
-		fmt.Printf("book name %s", book.market)
+		log.Printf("book name %s", book.market)
 
 		if err := e.CacheClient.SaveTrades(order.Market, trades); err != nil {
 			return nil, err
@@ -150,7 +140,7 @@ func (e *Engine) CancelOrder(order *models.Order) (*models.TradeManager, error) 
 		//if err := e.CacheClient.SaveOrderBook(order.Market, book); err != nil {
 		//	return nil, err
 		//}
-		fmt.Printf("book name %s", book.market)
+		log.Printf("book name %s", book.market) //ToDo save the orderbook
 
 		if err := e.CacheClient.SaveTrades(order.Market, trades); err != nil {
 			return nil, err
@@ -165,7 +155,6 @@ func (e *Engine) CancelOrder(order *models.Order) (*models.TradeManager, error) 
 }
 
 func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
-	fmt.Println("Run OrderBook")
 	for {
 		select {
 		case req := <-orderChan:
@@ -175,10 +164,8 @@ func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 			if req.isNewOrder {
 				switch req.order.Side {
 				case models.SellOrder:
-					fmt.Println("sell order")
 					trades, err = book.AddSellOrder(req.order)
 				case models.BuyOrder:
-					fmt.Println("buy order")
 					trades, err = book.AddBuyOrder(req.order)
 				default:
 					log.Printf("Unknown order[%s] side %s", req.order.ClientID, req.order.Side)
@@ -188,14 +175,16 @@ func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 				trades, err = book.CancelOrder(req.order)
 			}
 
+			if err := e.publishTradeResponse(context.Background(), req.order, trades); err != nil {
+				log.Printf("Error publishing trade response: %v", err)
+			}
+
 			if err != nil {
 				req.errorChan <- err
 				close(req.errorChan)
 				close(req.tradeChan)
 				continue
 			}
-
-			fmt.Println("got trades")
 
 			req.tradeChan <- trades
 			close(req.tradeChan)
@@ -211,19 +200,51 @@ func (e *Engine) Shutdown() {
 	e.cancel()
 }
 
-func (e *Engine) PublishTrades(publishChannel chan models.TradeManager) {
-	e.cancel()
+func (e *Engine) publishTradeResponse(ctx context.Context, order *models.Order, trades *models.TradeManager) error {
+
+	var status string
+
+	if trades.GetVolume() == 0 {
+		status = "new"
+	} else if order.Quantity > 0 {
+		status = "partially_filled"
+	} else {
+		status = "filled"
+	}
+
+	broadcastResp := &models.OrderResponse{
+		OrderID: order.ID,
+		Status:  status,
+		Trades:  make([]models.Trade, len(trades.GetTrades())),
+	}
+	for i, t := range trades.GetTrades() {
+		broadcastResp.Trades[i] = models.Trade{
+			ID:        t.ID,
+			Market:    t.Market,
+			Price:     t.Price,
+			Quantity:  t.Quantity,
+			BuyOrder:  t.BuyOrder,
+			SellOrder: t.SellOrder,
+			Timestamp: t.Timestamp,
+		}
+	}
+
+	data, err := json.Marshal(broadcastResp)
+	if err != nil {
+		log.Printf("Error marshalling response: %v", err)
+		return fmt.Errorf("failed to publish trades")
+	}
+	if err := e.PublishOrderResponse(ctx, order.Market, data); err != nil {
+		log.Printf("Failed to publish data: %v", err)
+		return fmt.Errorf("failed to publish trades")
+	}
+	return nil
 }
 
 func (e *Engine) PublishOrderResponse(ctx context.Context, market string, data []byte) error {
-	return e.CacheClient.PublishOrderResponse(ctx, "order_responses:"+market, data)
-}
-
-func (e *Engine) SubscribeToCache(ctx context.Context, market string, data []byte) error {
-	return e.CacheClient.PublishOrderResponse(ctx, "order_responses:"+market, data)
+	return e.CacheClient.PublishOrderResponse(ctx, market, data)
 }
 
 func (e *Engine) SubscribeToResponses(ctx context.Context, market string, responseChannel chan models.OrderResponse) error {
-	fmt.Printf("runnig grpcs - engine")
 	return e.CacheClient.SubscribeToResponses(ctx, market, responseChannel)
 }

@@ -3,7 +3,6 @@ package grpc
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"github.com/google/uuid"
 	"github.com/upekZ/matching-engine/internal/models"
 	"google.golang.org/grpc"
@@ -159,9 +158,6 @@ func NewServer(port string, eng GlobalEngine) (*grpc.Server, error) {
 	return srv, nil
 }
 
-func (s *OrderServiceHandler) ListenToOrders(ctx context.Context, market string, responseChannel chan models.OrderResponse) error {
-}
-
 func (s *OrderServiceHandler) SubscribeOrderUpdates(req *MarketRequest, stream OrderService_SubscribeOrderUpdatesServer) error {
 	if req.Market == "" {
 		return status.Error(codes.InvalidArgument, "Market must be specified")
@@ -170,8 +166,6 @@ func (s *OrderServiceHandler) SubscribeOrderUpdates(req *MarketRequest, stream O
 	ctx := stream.Context()
 	responseChannel := make(chan models.OrderResponse, 100)
 	errorChannel := make(chan error, 1)
-
-	fmt.Printf("runnig grpcs")
 
 	go func() {
 		err := s.engine.SubscribeToResponses(ctx, req.Market, responseChannel)

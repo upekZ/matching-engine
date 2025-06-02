@@ -2,6 +2,7 @@ package rest
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 )
@@ -25,7 +26,7 @@ func (app *Server) Start() error {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	fmt.Println("Starting server...")
+	log.Println("Starting REST server...")
 
 	err := server.ListenAndServe()
 	if err != nil {

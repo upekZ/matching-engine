@@ -2,7 +2,6 @@ package rest
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/upekZ/matching-engine/internal/models"
 	"net/http"
 )
@@ -34,8 +33,6 @@ func (app *Server) Create(writer http.ResponseWriter, req *http.Request) {
 	if err := WriteJSON(writer, http.StatusCreated, trades.GetTrades()); err != nil {
 		http.Error(writer, "users creation failure", http.StatusInternalServerError)
 	}
-
-	fmt.Println("Create success")
 }
 
 func (app *Server) Cancel(writer http.ResponseWriter, req *http.Request) {

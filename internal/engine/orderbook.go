@@ -199,7 +199,6 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 		bucketVolume := ordersByPrice[existingPrice].volume
 
 		reqVolFromBucket := 0
-		fmt.Printf("reqQuantity: %d, bucket volume: %d\n", reqQuantity, bucketVolume)
 		if reqQuantity > bucketVolume {
 			reqVolFromBucket = bucketVolume
 			reqQuantity -= bucketVolume
@@ -247,8 +246,6 @@ func (ob *OrderBook) matchOrdersInPrice(price float64, OrderID string, reqVolFro
 		return nil, fmt.Errorf("order matching failed\n")
 	}
 	priceInfo := ordersByPrice[price]
-
-	fmt.Printf("matching orders %d", priceInfo.volume)
 
 	e := priceInfo.orderList.Front()
 
