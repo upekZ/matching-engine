@@ -146,7 +146,13 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 		}
 	}()
 
-	keys := ob.SellPrices.Keys()
+	var keys []interface{}
+
+	if order.Side == "buy" {
+		keys = ob.SellPrices.Keys()
+	} else if order.Side == "sell" {
+		keys = ob.BuyPrices.Keys()
+	}
 
 	for _, key := range keys {
 		existingPrice := key.(float64)
@@ -157,6 +163,7 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 		bucket := ob.SellOrdersByPrice[existingPrice]
 
 		reqVolFromBucket := 0
+		fmt.Printf("reqQuantity: %d, bucket volume: %d\n", reqQuantity, bucket.volume)
 		if reqQuantity > bucket.volume {
 			reqVolFromBucket = bucket.volume
 			reqQuantity -= bucket.volume
@@ -194,6 +201,8 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 func (ob *OrderBook) matchOrdersInPrice(price float64, OrderID string, reqVolFromPrice int) (*models.TradeManager, error) {
 
 	priceInfo := ob.SellOrdersByPrice[price]
+
+	fmt.Printf("matching orders %d", priceInfo.volume)
 
 	e := priceInfo.orderList.Front()
 
@@ -238,7 +247,7 @@ func (ob *OrderBook) matchOrdersInPrice(price float64, OrderID string, reqVolFro
 				SellOrder: bookOrder.ClientID,
 				Timestamp: time.Now().Unix(),
 			})
-			
+
 			break
 		}
 	}

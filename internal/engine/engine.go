@@ -51,6 +51,8 @@ func New(cacheStore CacheStore) *Engine {
 
 func (e *Engine) PlaceOrder(order *models.Order) (*models.TradeManager, error) {
 
+	fmt.Println("Placed Order\n", order)
+
 	e.mutex.RLock()
 	orderChan, exists := e.orderChannels[order.Market]
 	e.mutex.RUnlock()
@@ -152,7 +154,12 @@ func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 			var err error
 
 			if req.isNewOrder {
-				trades, err = book.AddBuyOrder(req.order)
+				if req.order.Side == "sell" {
+					trades, err = book.AddSellOrder(req.order)
+				} else if req.order.Side == "buy" {
+					trades, err = book.AddBuyOrder(req.order)
+				}
+
 			} else {
 				trades, err = book.CancelOrder(req.order)
 			}

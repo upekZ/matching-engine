@@ -25,6 +25,8 @@ func (app *Server) Start() error {
 		WriteTimeout: 10 * time.Second,
 	}
 
+	fmt.Println("Starting server...")
+
 	err := server.ListenAndServe()
 	if err != nil {
 		return fmt.Errorf("server start failure: %w", err)
