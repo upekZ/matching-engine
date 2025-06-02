@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/upekZ/matching-engine/internal/api/grpc"
 	"github.com/upekZ/matching-engine/internal/engine"
-	redis "github.com/upekZ/matching-engine/internal/storage/redisstore"
+	redis "github.com/upekZ/matching-engine/internal/storage/redis-store"
 )
 
 func main() {

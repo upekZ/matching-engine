@@ -1,4 +1,4 @@
-package redisstore
+package redis_store
 
 import (
 	"context"
@@ -22,7 +22,7 @@ func NewClient(addr string) (*Client, error) {
 	return &Client{client: client}, nil
 }
 
-func (c *Client) SaveOrderBook(market string, obj Serializable, keyPrefix string) error {
+func (c *Client) SaveOrderBook(market string, obj Serializable, keyPrefix string) error { //ToDo plug order-book saving to main
 	data, err := obj.ToJSON()
 	if err != nil {
 		return err

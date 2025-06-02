@@ -74,6 +74,16 @@ func (s *OrderServiceHandler) PlaceOrder(ctx context.Context, req *OrderRequest)
 	return resp, nil
 }
 
+func (s *OrderServiceHandler) CancelOrder(ctx context.Context, id string) error {
+
+	err := s.engine.CancelOrder(id)
+
+	if err != nil {
+		log.Printf(status.Errorf(codes.Internal, "Failed to cancel order %v", err).Error())
+		return status.Error(codes.Internal, "Failed to cancel order")
+	}
+}
+
 func NewServer(port string, eng GlobalEngine) (*grpc.Server, error) {
 	srv := grpc.NewServer()
 	RegisterOrderServiceServer(srv, &OrderServiceHandler{engine: eng})
