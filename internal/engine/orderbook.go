@@ -150,8 +150,8 @@ func (ob *OrderBook) CancelOrder(order *models.Order) (*models.TradeManager, err
 		Quantity:  order.Quantity,
 		Market:    order.Market,
 		Status:    "cancelled",
-		BuyOrder:  order.ClientID,
-		SellOrder: order.ClientID,
+		BuyOrder:  "N/A",
+		SellOrder: "N/A",
 		Timestamp: time.Now().Unix(),
 	})
 	//ToDo a different type of trades or to add a field to order

@@ -222,18 +222,25 @@ func (e *Engine) Shutdown() {
 
 func (e *Engine) publishTradeResponse(ctx context.Context, order *models.Order, trades *models.TradeManager) error {
 
-	var status string
+	var status, ID string
 
-	if trades.GetVolume() == 0 {
-		status = "new"
-	} else if order.Quantity > trades.GetVolume() {
-		status = "partially_filled"
+	if order.ID != "" {
+		ID = order.ID
+		if trades.GetVolume() == 0 {
+			status = "new"
+		} else if order.Quantity > trades.GetVolume() {
+			status = "partially_filled"
+		} else {
+			status = "filled"
+		}
 	} else {
-		status = "closed"
+		ID = "client-side id :" + order.ClientID
+		status = "cancelled"
 	}
 
+	status = "cancelled"
 	broadcastResp := &models.OrderResponse{
-		OrderID: order.ID,
+		OrderID: ID,
 		Status:  status,
 		Trades:  make([]models.Trade, len(trades.GetTrades())),
 	}
