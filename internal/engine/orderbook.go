@@ -164,6 +164,7 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 	orderPrice := order.Price
 
 	var wg sync.WaitGroup
+	var tradeWg sync.WaitGroup
 	var toDeletePrices []float64
 	trades := models.NewTradeManager()
 
@@ -184,7 +185,9 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 		return nil, fmt.Errorf("order: %s not added to order-book invalid order type", order.ID)
 	}
 
+	tradeWg.Add(1)
 	go func() {
+		defer tradeWg.Done()
 		for item := range tradeChan {
 			trades.Append(item)
 		}
@@ -225,6 +228,7 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 
 	wg.Wait()
 	close(tradeChan)
+	tradeWg.Wait()
 
 	select {
 	case err := <-errChan:
@@ -240,7 +244,6 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 			ob.BuyPrices.Remove(id)
 		}
 	}
-
 	return trades, nil
 }
 

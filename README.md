@@ -56,7 +56,7 @@ A Matching engine for trading systems, built with Go. It supports order placemen
    go build
    ./api
    ```
-    - REST server runs on `:8082`.
+    - REST server runs on `:3000`.
     - gRPC server runs on `:8080`.
 
 ## Usage

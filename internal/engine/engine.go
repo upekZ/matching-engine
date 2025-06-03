@@ -216,10 +216,10 @@ func (e *Engine) publishTradeResponse(ctx context.Context, order *models.Order, 
 
 	if trades.GetVolume() == 0 {
 		status = "new"
-	} else if order.Quantity > 0 {
+	} else if order.Quantity > trades.GetVolume() {
 		status = "partially_filled"
 	} else {
-		status = "filled"
+		status = "closed"
 	}
 
 	broadcastResp := &models.OrderResponse{
