@@ -85,12 +85,15 @@ func (e *Engine) addNewMarket(market string) chan orderRequest {
 
 func (e *Engine) readResponse(order *models.Order, channel chan orderRequest) (*models.TradeManager, error) {
 
-	tradeChan := make(chan *models.TradeManager, 1)
-	errorChan := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(e.ctx, 5*time.Second)
+
+	tradeChan := make(chan *models.TradeManager)
+	errorChan := make(chan error)
 
 	defer func() {
 		close(tradeChan)
 		close(errorChan)
+		cancel()
 	}()
 
 	channel <- orderRequest{
@@ -121,24 +124,34 @@ func (e *Engine) readResponse(order *models.Order, channel chan orderRequest) (*
 		return trades, nil
 	case err := <-errorChan:
 		return nil, err
-	case <-e.ctx.Done():
-		return nil, e.ctx.Err()
+	case <-ctx.Done():
+		log.Printf("order request failed: %s", ctx.Err())
+		return nil, fmt.Errorf("order request failed")
 	}
 }
 
 func (e *Engine) CancelOrder(order *models.Order) (*models.TradeManager, error) {
 
+	ctx, cancel := context.WithTimeout(e.ctx, 5*time.Second)
+	tradeChan := make(chan *models.TradeManager)
+	errorChan := make(chan error)
+
+	defer func() {
+		close(tradeChan)
+		close(errorChan)
+		cancel()
+	}()
+
 	e.mutex.RLock()
 	orderChan, exists := e.orderChannels[order.Market]
+	book := e.orderBooks[order.Market]
 	e.mutex.RUnlock()
 
-	if !exists {
-		log.Printf("order not found for market %s", order.Market)
-		return nil, fmt.Errorf("order not found for market %s", order.Market)
+	if !exists || book == nil {
+		log.Printf("orderbook does not exist for market: %s", order.Market)
+		return nil, fmt.Errorf("order cancellation failed")
 	}
 
-	tradeChan := make(chan *models.TradeManager, 1)
-	errorChan := make(chan error, 1)
 	orderChan <- orderRequest{
 		isNewOrder: false,
 		order:      order,
@@ -148,23 +161,20 @@ func (e *Engine) CancelOrder(order *models.Order) (*models.TradeManager, error) 
 
 	select {
 	case trades := <-tradeChan:
-		e.mutex.RLock()
-		book := e.orderBooks[order.Market]
-		e.mutex.RUnlock()
+
 		//if err := e.CacheClient.SaveOrderBook(order.Market, book); err != nil {
-		//	return nil, err
+		//	return nil, fmt.Errorf("failed to save order book for market %s: %w", order.Market, err)
 		//}
-		log.Printf("book name %s", book.market) //ToDo save the orderbook
-
+		log.Printf("orderbook: %s", book.market)
 		if err := e.CacheClient.SaveTrades(order.Market, trades); err != nil {
-			return nil, err
+			log.Printf("error caching trades: %s", err)
 		}
-
 		return trades, nil
 	case err := <-errorChan:
 		return nil, err
-	case <-e.ctx.Done():
-		return nil, e.ctx.Err()
+	case <-ctx.Done():
+		log.Printf("order cancellation failed: %s", ctx.Err())
+		return nil, fmt.Errorf("order cancellation failed")
 	}
 }
 
