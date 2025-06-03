@@ -57,7 +57,7 @@ func NewOrderBook(market string) *OrderBook {
 
 func (ob *OrderBook) AddBuyOrder(order *models.Order) (*models.TradeManager, error) {
 
-	trades, err := ob.matchOrder(order, models.Greater)
+	trades, err := ob.matchOrder(order, models.Less)
 
 	if err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func (ob *OrderBook) AddBuyOrder(order *models.Order) (*models.TradeManager, err
 
 func (ob *OrderBook) AddSellOrder(order *models.Order) (*models.TradeManager, error) {
 
-	trades, err := ob.matchOrder(order, models.Less)
+	trades, err := ob.matchOrder(order, models.Greater)
 
 	if err != nil {
 		return nil, err
@@ -167,14 +167,8 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 	var toDeletePrices []float64
 	trades := models.NewTradeManager()
 
-	tradeChan := make(chan *models.TradeManager, 264)
+	tradeChan := make(chan *models.TradeManager, 64)
 	errChan := make(chan error)
-
-	go func() {
-		for item := range tradeChan {
-			trades.Append(item)
-		}
-	}()
 
 	var keys []interface{}
 	var ordersByPrice map[float64]*PriceInfo
@@ -190,9 +184,15 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 		return nil, fmt.Errorf("order: %s not added to order-book invalid order type", order.ID)
 	}
 
+	go func() {
+		for item := range tradeChan {
+			trades.Append(item)
+		}
+	}()
+
 	for _, key := range keys {
 		existingPrice := key.(float64)
-		if returnCmp(existingPrice, orderPrice) {
+		if !returnCmp(existingPrice, orderPrice) {
 			break
 		}
 
@@ -226,8 +226,19 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 	wg.Wait()
 	close(tradeChan)
 
+	select {
+	case err := <-errChan:
+		return nil, err
+	default:
+	}
+
 	for _, id := range toDeletePrices {
-		ob.SellPrices.Remove(id)
+		switch order.Side {
+		case models.BuyOrder:
+			ob.SellPrices.Remove(id)
+		case models.SellOrder:
+			ob.BuyPrices.Remove(id)
+		}
 	}
 
 	return trades, nil

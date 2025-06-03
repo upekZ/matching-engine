@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/upekZ/matching-engine/internal/models"
 	"log"
 	"sync"
+	"time"
 )
 
 type CacheStore interface {
@@ -50,6 +52,8 @@ func (e *Engine) PlaceOrder(order *models.Order) (*models.TradeManager, error) {
 		this will cause a perf hit with locking order channels when reading and creating channels + order-books when required.
 		if markets aren't to be updated dynamically but to be added outside of placing orders, blocking could be limited only to reading order channels
 	*/
+	order.ID = uuid.New().String()
+	order.Timestamp = time.Now().Unix()
 
 	e.mutex.RLock()
 	orderChan, exists := e.orderChannels[order.Market]
@@ -70,7 +74,7 @@ func (e *Engine) PlaceOrder(order *models.Order) (*models.TradeManager, error) {
 
 func (e *Engine) addNewMarket(market string) chan orderRequest {
 	book := NewOrderBook(market)
-	channel := make(chan orderRequest, 100)
+	channel := make(chan orderRequest)
 	e.orderBooks[market] = book
 	e.orderChannels[market] = channel
 
@@ -83,6 +87,12 @@ func (e *Engine) readResponse(order *models.Order, channel chan orderRequest) (*
 
 	tradeChan := make(chan *models.TradeManager, 1)
 	errorChan := make(chan error, 1)
+
+	defer func() {
+		close(tradeChan)
+		close(errorChan)
+	}()
+
 	channel <- orderRequest{
 		isNewOrder: true,
 		order:      order,
@@ -93,8 +103,12 @@ func (e *Engine) readResponse(order *models.Order, channel chan orderRequest) (*
 	select {
 	case trades := <-tradeChan:
 		e.mutex.RLock()
-		book := e.orderBooks[order.Market]
+		book, exists := e.orderBooks[order.Market]
 		e.mutex.RUnlock()
+		if !exists {
+			log.Printf("orderbook does not exist for market: %s", order.Market)
+			return nil, fmt.Errorf("order book for market not found")
+		}
 		//if err := e.CacheClient.SaveOrderBook(order.Market, book); err != nil {
 		//	return nil, err
 		//}
@@ -181,14 +195,10 @@ func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 
 			if err != nil {
 				req.errorChan <- err
-				close(req.errorChan)
-				close(req.tradeChan)
 				continue
 			}
 
 			req.tradeChan <- trades
-			close(req.tradeChan)
-			close(req.errorChan)
 
 		case <-e.ctx.Done():
 			return

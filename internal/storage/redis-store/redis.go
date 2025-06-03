@@ -72,11 +72,11 @@ func (c *Client) SubscribeToResponses(ctx context.Context, market string, respon
 		return status.Error(codes.InvalidArgument, "Market must be specified")
 	}
 
-	pubsub := c.client.Subscribe(ctx, "order_responses:"+market)
-	defer pubsub.Close()
+	pubSub := c.client.Subscribe(ctx, "order_responses:"+market)
+	defer pubSub.Close()
 
 	for {
-		msg, err := pubsub.ReceiveMessage(ctx)
+		msg, err := pubSub.ReceiveMessage(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return nil // Client disconnected

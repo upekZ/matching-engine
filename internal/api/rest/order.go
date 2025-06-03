@@ -30,7 +30,7 @@ func (app *Server) Create(writer http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := WriteJSON(writer, http.StatusCreated, trades.GetTrades()); err != nil {
+	if err := WriteJSON(writer, http.StatusCreated, order); err != nil {
 		http.Error(writer, "users creation failure", http.StatusInternalServerError)
 	}
 }
