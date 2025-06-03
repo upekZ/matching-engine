@@ -199,13 +199,13 @@ func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 				trades, err = book.CancelOrder(req.order)
 			}
 
-			if err := e.publishTradeResponse(context.Background(), req.order, trades); err != nil {
-				log.Printf("Error publishing trade response: %v", err)
-			}
-
 			if err != nil {
 				req.errorChan <- err
 				continue
+			}
+
+			if err := e.publishTradeResponse(context.Background(), req.order, trades); err != nil {
+				log.Printf("Error publishing trade response: %v", err)
 			}
 
 			req.tradeChan <- trades
