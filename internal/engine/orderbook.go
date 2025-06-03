@@ -156,6 +156,7 @@ func (ob *OrderBook) CancelOrder(order *models.Order) (*models.TradeManager, err
 	})
 	//ToDo a different type of trades or to add a field to order
 	delete(ob.OrderIndex, order.ID)
+	delete(ob.ClientIDs, order.ClientID)
 	return trades, nil
 }
 
