@@ -69,7 +69,7 @@ func (e *Engine) PlaceOrder(order *models.Order) (*models.TradeManager, error) {
 		e.mutex.Unlock()
 	}
 
-	return e.readResponse(order, orderChan)
+	return e.processRequest(order, orderChan)
 }
 
 func (e *Engine) addNewMarket(market string) chan orderRequest {
@@ -83,7 +83,7 @@ func (e *Engine) addNewMarket(market string) chan orderRequest {
 	return channel
 }
 
-func (e *Engine) readResponse(order *models.Order, channel chan orderRequest) (*models.TradeManager, error) {
+func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) (*models.TradeManager, error) {
 
 	ctx, cancel := context.WithTimeout(e.ctx, 5*time.Second)
 
