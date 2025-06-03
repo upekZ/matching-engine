@@ -228,7 +228,7 @@ func (e *Engine) publishTradeResponse(ctx context.Context, order *models.Order, 
 		ID = order.ID
 		if trades.GetVolume() == 0 {
 			status = "new"
-		} else if order.Quantity > trades.GetVolume() {
+		} else if order.Quantity > 0 {
 			status = "partially_filled"
 		} else {
 			status = "filled"

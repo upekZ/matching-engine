@@ -112,6 +112,7 @@ A Matching engine for trading systems, built with Go. It supports order placemen
 - Engine is only developed for LimitOrders. No Order types considered so far. to expand to other types of orders
 - Current implementation expects to cancel->New when order needs to be modified. This needs to be expanded to Cancel and New if priority is impacted only and modify if no impact for priority --> Add Modify Order
 - At the moment cancel order is defined to require an Order Type. This needs to be modified with ability to cancel by client ID
+- Engine uses redis both as an in-memory store and a message broker. Implementation uses a single redis instance. functionality can be seperated to facilitate a seperate store and broker
 - Add Integration and Unit Tests
 - Add a persistent storage for routine backups
 - To Implement web-sockets with grpc
