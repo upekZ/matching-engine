@@ -110,8 +110,6 @@ A Matching engine for trading systems, built with Go. It supports order placemen
 
 ## Future Improvements
 - Engine is only developed for LimitOrders. No Order types considered so far. to expand to other types of orders
-- Refine Matching logic to avoid quirks -> For some scenarios where trades have not taken place, trades were returned with 0 volume
-- There is a marshaling issue for grpc responses, this results in some trades not displayed in response. need to fix
 - Current implementation expects to cancel->New when order needs to be modified. This needs to be expanded to Cancel and New if priority is impacted only and modify if no impact for priority --> Add Modify Order
 - At the moment cancel order is defined to require an Order Type. This needs to be modified with ability to cancel by client ID
 - Add Integration and Unit Tests
