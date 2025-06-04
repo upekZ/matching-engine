@@ -71,7 +71,7 @@ func (o *Order) GetOppositeOrderType() OrderSide {
 	if o.Side == BuyOrder {
 		return SellOrder
 	} else {
-		return SellOrder
+		return BuyOrder
 	}
 }
 
@@ -86,31 +86,32 @@ func (o *Order) ExecuteTrade(qty int, price float64) *Trade {
 	}
 
 	return &Trade{
-		ID:        uuid.New().String(),
-		Price:     price,
-		Quantity:  qty,
-		OrderID:   o.ID,
-		ClientOID: o.ClientID,
-		Timestamp: time.Now().UnixMilli(),
-		Action:    TradeAction,
-		Symbol:    o.Symbol,
-		Status:    o.Status,
-		OrderSide: o.Side,
+		ID:         uuid.New().String(),
+		OrderPrice: o.Price,
+		TradePrice: price,
+		Quantity:   qty,
+		OrderID:    o.ID,
+		ClientOID:  o.ClientID,
+		Timestamp:  time.Now().UnixMilli(),
+		Action:     TradeAction,
+		Symbol:     o.Symbol,
+		Status:     o.Status,
+		OrderSide:  o.Side,
 	}
 }
 
 func (o *Order) ExecuteCancel() *Trade {
 	o.Status = Cancelled
 	return &Trade{
-		ID:        uuid.New().String(),
-		Price:     o.Price,
-		Quantity:  o.Quantity,
-		OrderID:   o.ID,
-		ClientOID: o.ClientID,
-		Timestamp: time.Now().UnixMilli(),
-		Action:    CancelAction,
-		Symbol:    o.Symbol,
-		Status:    o.Status,
-		OrderSide: o.Side,
+		ID:         uuid.New().String(),
+		OrderPrice: o.Price,
+		Quantity:   o.Quantity,
+		OrderID:    o.ID,
+		ClientOID:  o.ClientID,
+		Timestamp:  time.Now().UnixMilli(),
+		Action:     CancelAction,
+		Symbol:     o.Symbol,
+		Status:     o.Status,
+		OrderSide:  o.Side,
 	}
 }

@@ -82,7 +82,7 @@ func (e *Engine) addNewSymbol(symbol string) chan orderRequest {
 
 func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) error {
 
-	ctx, cancel := context.WithTimeout(e.ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(e.ctx, 10000000*time.Second)
 
 	tradeChan := make(chan []*models.Trade, 16)
 	errorChan := make(chan error)
@@ -172,15 +172,11 @@ func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 
 func (e *Engine) processTradeResponse(ctx context.Context, trades []*models.Trade) error {
 
-	execReports := make(models.ExecutionReport, len(trades)-1)
+	execReports := make(models.ExecutionReport, 0)
 	symbol := ""
 
 	for _, t := range trades {
 		symbol = t.Symbol
-
-		if execReports[t.OrderID] != nil {
-			execReports[t.OrderID] = make([]*models.Trade, 16)
-		}
 
 		var currentOrder *models.Order
 		if element := e.orderBooks[t.Symbol].OrderIndex[t.OrderID]; element != nil {
@@ -194,7 +190,7 @@ func (e *Engine) processTradeResponse(ctx context.Context, trades []*models.Trad
 				}
 			}
 		}
-		execReports[t.OrderID] = append(execReports[t.OrderID], t)
+		execReports[t.ClientOID] = append(execReports[t.ClientOID], t)
 	}
 
 	data, err := json.Marshal(execReports)

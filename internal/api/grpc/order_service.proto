@@ -19,11 +19,11 @@ message OrderRequest {
 }
 
 message OrderResponse {
-  string order_id = 1;               // Unique identifier for the order
+  string order_id = 1;
   enum OrderStatus {
-    PENDING = 0;                     // Order is received but not yet processed
-    CONFIRMED = 1;                   // Order is confirmed
-    FAILED = 2;                      // Order placement failed
+    PENDING = 0;
+    CONFIRMED = 1;
+    FAILED = 2;
   }
   OrderStatus status = 2;
 }
@@ -41,13 +41,14 @@ message Trade {
   string status = 2;
   string symbol = 3;
   float price = 4;
-  int32 quantity = 5;
-  int32 cum_quantity = 6;
-  string client_id = 7;
-  string action = 8;
-  string side = 9;
-  int64 timestamp = 10;
-  string order_id = 11;
+  float order_price = 5;
+  int32 quantity = 6;
+  int32 cum_quantity = 7;
+  string client_id = 8;
+  string action = 9;
+  string side = 10;
+  int64 timestamp = 11;
+  string order_id = 12;
 }
 
 message TradeList {

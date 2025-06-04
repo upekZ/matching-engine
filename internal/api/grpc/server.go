@@ -105,14 +105,15 @@ func ConvertToProtoExecReport(input models.ExecutionReport) *ExecReport {
 
 	for key, trades := range input {
 		tradeList := &TradeList{
-			Trade: make([]*Trade, 0, len(trades)),
+			Trade: make([]*Trade, len(trades)),
 		}
 		for _, trade := range trades {
 			protoTrade := &Trade{
 				Id:          trade.ID,
 				Status:      string(trade.Status),
 				Symbol:      trade.Symbol,
-				Price:       float32(trade.Price),
+				Price:       float32(trade.TradePrice),
+				OrderPrice:  float32(trade.OrderPrice),
 				Quantity:    int32(trade.Quantity),
 				CumQuantity: int32(trade.CumQty),
 				ClientId:    trade.ClientOID,

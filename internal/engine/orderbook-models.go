@@ -7,24 +7,12 @@ import (
 
 type PriceToOrderMap map[float64]*models.OrderList
 type SellOrders struct {
-	SellOrdersByPrice PriceToOrderMap
-	SellPrices        *rbt.Tree
+	OrdersByPrice PriceToOrderMap
+	OrderedPrices *rbt.Tree
 }
 
-type BuyOrders struct {
-	BuyOrdersByPrice PriceToOrderMap
-	BuyPrices        *rbt.Tree
-}
+func NewSellContainers() *SellOrders {
 
-type OrderBook struct {
-	market              string
-	SellOrderContainers SellOrders
-	BuyOrderContainers  BuyOrders
-	OrderIndex          map[string]*models.OrderElement
-	ClientIDs           map[string]string
-}
-
-func NewOrderBook(market string) *OrderBook {
 	sellComparator := func(a, b interface{}) int {
 		aPrice, bPrice := a.(float64), b.(float64)
 		if aPrice < bPrice {
@@ -36,28 +24,58 @@ func NewOrderBook(market string) *OrderBook {
 		return 0
 	}
 
+	return &SellOrders{
+		OrdersByPrice: make(PriceToOrderMap),
+		OrderedPrices: rbt.NewWith(sellComparator),
+	}
+}
+
+func (s *SellOrders) getContainers() (PriceToOrderMap, *rbt.Tree) {
+	return s.OrdersByPrice, s.OrderedPrices
+}
+
+type BuyOrders struct {
+	OrdersByPrice PriceToOrderMap
+	OrderedPrices *rbt.Tree
+}
+
+func (b *BuyOrders) getContainers() (PriceToOrderMap, *rbt.Tree) {
+	return b.OrdersByPrice, b.OrderedPrices
+}
+
+func NewBuyContainers() *BuyOrders {
 	buyComparator := func(a, b interface{}) int {
 		aPrice, bPrice := a.(float64), b.(float64)
-		if aPrice < bPrice {
+		if aPrice > bPrice {
 			return -1
 		}
-		if aPrice > bPrice {
+		if aPrice < bPrice {
 			return 1
 		}
 		return 0
 	}
 
+	return &BuyOrders{
+		OrdersByPrice: make(PriceToOrderMap),
+		OrderedPrices: rbt.NewWith(buyComparator),
+	}
+}
+
+type OrderBook struct {
+	market              string
+	SellOrderContainers *SellOrders
+	BuyOrderContainers  *BuyOrders
+	OrderIndex          map[string]*models.OrderElement
+	ClientIDs           map[string]string
+}
+
+func NewOrderBook(market string) *OrderBook {
+
 	return &OrderBook{
 		market: market,
 
-		SellOrderContainers: SellOrders{
-			SellOrdersByPrice: make(PriceToOrderMap),
-			SellPrices:        rbt.NewWith(sellComparator),
-		},
-		BuyOrderContainers: BuyOrders{
-			BuyOrdersByPrice: make(PriceToOrderMap),
-			BuyPrices:        rbt.NewWith(buyComparator),
-		},
+		SellOrderContainers: NewSellContainers(),
+		BuyOrderContainers:  NewBuyContainers(),
 
 		OrderIndex: make(map[string]*models.OrderElement),
 		ClientIDs:  make(map[string]string),
@@ -67,9 +85,9 @@ func NewOrderBook(market string) *OrderBook {
 func (ob *OrderBook) getContainers(side models.OrderSide) (PriceToOrderMap, *rbt.Tree) {
 	switch side {
 	case models.BuyOrder:
-		return ob.BuyOrderContainers.BuyOrdersByPrice, ob.BuyOrderContainers.BuyPrices
+		return ob.BuyOrderContainers.getContainers()
 	case models.SellOrder:
-		return ob.SellOrderContainers.SellOrdersByPrice, ob.SellOrderContainers.SellPrices
+		return ob.SellOrderContainers.getContainers()
 
 	default:
 		return nil, nil

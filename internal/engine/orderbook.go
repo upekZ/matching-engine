@@ -41,6 +41,7 @@ func (ob *OrderBook) addToOrderBook(order *models.Order) error {
 		priceMap[order.Price] = models.NewOrderList()
 		priceList.Put(order.Price, true)
 	}
+
 	priceRef := priceMap[order.Price]
 
 	element := priceRef.Push(order)
@@ -111,7 +112,7 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 
 func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*models.Trade, error) {
 
-	ordersByPrice, _ := ob.getContainers(order.Side)
+	ordersByPrice, _ := ob.getContainers(order.GetOppositeOrderType())
 
 	priceInfo := ordersByPrice[price]
 
@@ -133,6 +134,8 @@ func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*
 
 		matchedTrades = append(matchedTrades, bookOrder.ExecuteTrade(tradeQty, price))
 		matchedTrades = append(matchedTrades, order.ExecuteTrade(tradeQty, price))
+
+		e = e.Next()
 	}
 
 	return matchedTrades, nil
