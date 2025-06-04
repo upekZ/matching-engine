@@ -93,8 +93,13 @@ func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) 
 		cancel()
 	}()
 
+	isNew := true
+	if order.ReqType == models.CancelOrder {
+		isNew = false
+	}
+
 	channel <- orderRequest{
-		isNewOrder: true,
+		isNewOrder: isNew,
 		order:      order,
 		tradeChan:  tradeChan,
 		errorChan:  errorChan,
