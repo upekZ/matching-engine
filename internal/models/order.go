@@ -67,20 +67,12 @@ func (o *Order) ToJSON() ([]byte, error) {
 	return json.Marshal(o)
 }
 
-func (o *Order) ReduceQuantity(volume int) bool {
-	if o.Quantity >= volume {
-		o.Quantity -= volume
-		return true
+func (o *Order) GetOppositeOrderType() OrderSide {
+	if o.Side == BuyOrder {
+		return SellOrder
+	} else {
+		return SellOrder
 	}
-	return false
-}
-
-func (o *Order) GenerateExecReport(volume int) bool {
-	if o.Quantity >= volume {
-		o.Quantity -= volume
-		return true
-	}
-	return false
 }
 
 func (o *Order) ExecuteTrade(qty int, price float64) *Trade {

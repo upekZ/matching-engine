@@ -59,7 +59,7 @@ func (e *Engine) PlaceRequest(orderReq *models.Order) error {
 	if !exists {
 		e.mutex.Lock()
 		if _, exists := e.orderChannels[newOrder.Symbol]; !exists { //double lock to be sure
-			orderChan = e.addNewMarket(newOrder.Symbol)
+			orderChan = e.addNewSymbol(newOrder.Symbol)
 		} else {
 			orderChan = e.orderChannels[newOrder.Symbol]
 		}
@@ -69,11 +69,11 @@ func (e *Engine) PlaceRequest(orderReq *models.Order) error {
 	return e.processRequest(newOrder, orderChan)
 }
 
-func (e *Engine) addNewMarket(market string) chan orderRequest {
-	book := NewOrderBook(market)
+func (e *Engine) addNewSymbol(symbol string) chan orderRequest {
+	book := NewOrderBook(symbol)
 	channel := make(chan orderRequest)
-	e.orderBooks[market] = book
-	e.orderChannels[market] = channel
+	e.orderBooks[symbol] = book
+	e.orderChannels[symbol] = channel
 
 	go e.runOrderBook(book, channel)
 
@@ -82,7 +82,7 @@ func (e *Engine) addNewMarket(market string) chan orderRequest {
 
 func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) error {
 
-	ctx, cancel := context.WithTimeout(e.ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(e.ctx, 10*time.Second)
 
 	tradeChan := make(chan []*models.Trade, 16)
 	errorChan := make(chan error)
@@ -127,7 +127,7 @@ func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) 
 	case err := <-errorChan:
 		return err
 	case <-ctx.Done():
-		log.Printf("order request failed: %s", ctx.Err())
+		log.Printf("order request failed - timeout: %s", ctx.Err())
 		return fmt.Errorf("order request failed")
 	}
 }
@@ -142,9 +142,9 @@ func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 			if req.isNewOrder {
 				switch req.order.Side {
 				case models.SellOrder:
-					trades, err = book.AddSellOrder(req.order)
+					trades, err = book.AddSellRequest(req.order)
 				case models.BuyOrder:
-					trades, err = book.AddBuyOrder(req.order)
+					trades, err = book.AddBuyRequest(req.order)
 				default:
 					log.Printf("Unknown order[%s] side %s", req.order.ClientID, req.order.Side)
 					return
@@ -202,6 +202,7 @@ func (e *Engine) processTradeResponse(ctx context.Context, trades []*models.Trad
 		log.Printf("Error marshalling response: %v", err)
 		return fmt.Errorf("failed to publish execution reports")
 	}
+
 	if err := e.PublishOrderResponse(ctx, symbol, data); err != nil {
 		log.Printf("Failed to publish data: %v", err)
 		return fmt.Errorf("failed to publish execution reports")
@@ -213,6 +214,6 @@ func (e *Engine) PublishOrderResponse(ctx context.Context, market string, data [
 	return e.CacheClient.PublishOrderResponse(ctx, market, data)
 }
 
-func (e *Engine) SubscribeToResponses(ctx context.Context, market string, responseChannel chan models.ExecutionReport) error {
+func (e *Engine) SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error {
 	return e.CacheClient.SubscribeToResponses(ctx, market, responseChannel)
 }

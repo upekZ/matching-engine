@@ -13,7 +13,7 @@ import (
 type GlobalEngine interface {
 	PlaceRequest(order *models.Order) error
 	PublishOrderResponse(ctx context.Context, market string, data []byte) error
-	SubscribeToResponses(ctx context.Context, market string, responseChannel chan models.ExecutionReport) error
+	SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error
 }
 
 type CacheStore interface {
@@ -81,9 +81,15 @@ func (s *OrderServiceHandler) SubscribeOrderUpdates(req *MarketRequest, stream O
 		select {
 		case <-ctx.Done():
 			return nil
-		case err := <-errorChannel:
+		case err, ok := <-errorChannel:
+			if !ok {
+				return nil
+			}
 			return err
-		case response := <-responseChannel:
+		case response, ok := <-responseChannel:
+			if !ok {
+				return nil
+			}
 			grpcResp := ConvertToProtoExecReport(response)
 			if err := stream.Send(grpcResp); err != nil {
 				return status.Errorf(codes.Internal, "Failed to send response: %v", err)

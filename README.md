@@ -65,7 +65,7 @@ A Matching engine for trading systems, built with Go. It supports order placemen
 - **Example**:
   ```bash
   curl -X POST http://localhost:8082/orders -H "Content-Type: application/json" -d '{
-      "market": "BTC-USD",
+      "symbol": "BTC-USD",
       "client_id": "id-from-client"
       "side": "buy",
       "price": 50000.0,
@@ -88,23 +88,23 @@ A Matching engine for trading systems, built with Go. It supports order placemen
         - Set `MarketRequest`:
           ```json
           {
-            "market": "BTC-USD"
+            "symbol": "BTC-USD"
           }
           ```
         - Click “Invoke” to start streaming.
     2. Place orders via REST to trigger updates (see above).
     3. Observe streamed `OrderResponse` messages in Postman:
-        - Example: `{"order_id":"...", "trades":[{"id":"...", "market":"BTC-USD", ...}]}`
+        - Example: `{"order_id":"...", "trades":[{"id":"...", "symbol":"BTC-USD", ...}]}`
 
 ## Architecture
 - **Presentation Layer**:
     - REST API (`internal/api/rest`): Handles order placement (New Order and Cancel Order).
     - gRPC (`internal/api/grpc`): Streams trade updates to gateways.
 - **Business Logic**:
-    - Engine (`internal/engine`): Processes orders using channels per market.
+    - Engine (`internal/engine`): Processes orders using channels per symbol.
     - Processes multiple price levels concurrently
 - **Data Layer**:
-    - Redis (`internal/storage/redis`): Stores trades (`trade:<id>`) and facilitates Pub/Sub (`order_responses:<market>`).
+    - Redis (`internal/storage/redis`): Stores trades (`trade:<id>`) and facilitates Pub/Sub (`order_responses:<symbol>`).
 - **Type Safety**:
     - Uses `models.OrderResponse` in `internal/models` to avoid gRPC dependencies in business logic.
     - gRPC types are isolated to the presentation layer.

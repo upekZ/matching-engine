@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/redis/go-redis/v9"
 	"github.com/upekZ/matching-engine/internal/models"
 	"google.golang.org/grpc/codes"
@@ -61,6 +62,7 @@ func (c *Client) SaveTrades(market string, trades []*models.Trade) error {
 }
 
 func (c *Client) PublishOrderResponse(ctx context.Context, market string, data []byte) error {
+	fmt.Printf("PublishOrderResponse: %s\n", data)
 	if err := c.client.Publish(ctx, "order_responses:"+market, data).Err(); err != nil {
 		return err
 	}
@@ -71,6 +73,10 @@ func (c *Client) SubscribeToResponses(ctx context.Context, market string, respon
 	if market == "" {
 		return status.Error(codes.InvalidArgument, "Symbol must be specified")
 	}
+
+	defer func() {
+		close(responseChannel)
+	}()
 
 	pubSub := c.client.Subscribe(ctx, "order_responses:"+market)
 	defer pubSub.Close()
