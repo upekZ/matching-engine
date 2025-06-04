@@ -8,15 +8,14 @@ import (
 )
 
 type OrderService interface {
-	PlaceOrder(order *models.Order) (*models.TradeManager, error)
-	CancelOrder(order *models.Order) (*models.TradeManager, error)
+	PlaceRequest(order *models.Order) error
 }
 
 type Channel interface {
 	ServeWS() http.HandlerFunc
 }
 
-func (app *Server) Create(writer http.ResponseWriter, req *http.Request) {
+func (app *Server) OrderRequest(writer http.ResponseWriter, req *http.Request) {
 
 	var order models.Order
 
@@ -25,9 +24,9 @@ func (app *Server) Create(writer http.ResponseWriter, req *http.Request) {
 		http.Error(writer, "order request failure", http.StatusInternalServerError)
 		return
 	}
-	trades, err := app.service.PlaceOrder(&order)
+	err := app.service.PlaceRequest(&order)
 
-	if err != nil || trades == nil {
+	if err != nil {
 		log.Printf("Error placing order: %v", err)
 		http.Error(writer, "order request failure", http.StatusInternalServerError)
 		return
@@ -36,29 +35,6 @@ func (app *Server) Create(writer http.ResponseWriter, req *http.Request) {
 	if err := WriteJSON(writer, http.StatusCreated, order); err != nil {
 		log.Printf("Error writing response: %v", err)
 		http.Error(writer, "order request failure", http.StatusInternalServerError)
-	}
-}
-
-func (app *Server) Cancel(writer http.ResponseWriter, req *http.Request) {
-
-	var order models.Order
-
-	if err := json.NewDecoder(req.Body).Decode(&order); err != nil {
-		log.Printf("Error decoding body: %v", err)
-		http.Error(writer, "order cancel failure", http.StatusInternalServerError)
-		return
-	}
-	trades, err := app.service.CancelOrder(&order)
-
-	if err != nil || trades == nil {
-		log.Printf("Error canceling order: %v", err)
-		http.Error(writer, "order cancel failure", http.StatusInternalServerError)
-		return
-	}
-
-	if err := WriteJSON(writer, http.StatusCreated, order); err != nil {
-		log.Printf("Error writing response: %v", err)
-		http.Error(writer, "order cancel failure", http.StatusInternalServerError)
 	}
 }
 

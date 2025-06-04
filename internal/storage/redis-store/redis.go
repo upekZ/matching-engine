@@ -35,11 +35,11 @@ func (c *Client) SaveOrderBook(market string, obj Serializable, keyPrefix string
 	return c.client.Set(context.Background(), key, data, 0).Err()
 }
 
-func (c *Client) SaveTrades(market string, trades *models.TradeManager) error {
+func (c *Client) SaveTrades(market string, trades []*models.Trade) error {
 
 	var allTrades [][]byte
 
-	for _, trade := range trades.GetTrades() {
+	for _, trade := range trades {
 		data, err := json.Marshal(trade)
 		if err != nil {
 			return err
@@ -67,9 +67,9 @@ func (c *Client) PublishOrderResponse(ctx context.Context, market string, data [
 	return nil
 }
 
-func (c *Client) SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.OrderResponse) error {
+func (c *Client) SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error {
 	if market == "" {
-		return status.Error(codes.InvalidArgument, "Market must be specified")
+		return status.Error(codes.InvalidArgument, "Symbol must be specified")
 	}
 
 	pubSub := c.client.Subscribe(ctx, "order_responses:"+market)
@@ -84,7 +84,7 @@ func (c *Client) SubscribeToResponses(ctx context.Context, market string, respon
 			return status.Errorf(codes.Internal, "Failed to receive message: %v", err)
 		}
 
-		var modelResp models.OrderResponse
+		var modelResp models.ExecutionReport
 		if err := json.Unmarshal([]byte(msg.Payload), &modelResp); err != nil {
 			log.Printf("Failed to unmarshal response: %v", err)
 			continue

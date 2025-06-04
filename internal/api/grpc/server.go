@@ -2,22 +2,18 @@ package grpc
 
 import (
 	"context"
-	"encoding/json"
-	"github.com/google/uuid"
 	"github.com/upekZ/matching-engine/internal/models"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"log"
 	"net"
-	"time"
 )
 
 type GlobalEngine interface {
-	PlaceOrder(order *models.Order) (*models.TradeManager, error)
-	CancelOrder(order *models.Order) (*models.TradeManager, error)
+	PlaceRequest(order *models.Order) error
 	PublishOrderResponse(ctx context.Context, market string, data []byte) error
-	SubscribeToResponses(ctx context.Context, market string, responseChannel chan models.OrderResponse) error
+	SubscribeToResponses(ctx context.Context, market string, responseChannel chan models.ExecutionReport) error
 }
 
 type CacheStore interface {
@@ -28,118 +24,25 @@ type OrderServiceHandler struct {
 	UnimplementedOrderServiceServer
 }
 
-func (s *OrderServiceHandler) PlaceOrder(ctx context.Context, req *OrderRequest) (*OrderResponse, error) {
+func (s *OrderServiceHandler) PlaceNewOrder(ctx context.Context, req *OrderRequest) (*OrderResponse, error) {
 
 	if req.Price <= 0 || req.Quantity <= 0 || (req.Side != "buy" && req.Side != "sell") {
 		return nil, status.Error(codes.InvalidArgument, "Invalid order parameters")
 	}
 
-	order := &models.Order{
-		ID:        uuid.New().String(),
-		ClientID:  req.ClientId,
-		Market:    req.GetMarket(),
-		Side:      models.OrderType(req.GetSide()),
-		Price:     req.GetPrice(),
-		Quantity:  int(req.Quantity),
-		Timestamp: time.Now().UnixNano(),
-	}
-
-	trades, err := s.engine.PlaceOrder(order)
-
-	if err != nil {
-		return nil, err
-	}
-
-	response := s.convertToResponse(order, trades)
-
-	data, err := json.Marshal(response)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "Failed to serialize response")
-	}
-	if err := s.engine.PublishOrderResponse(ctx, req.Market, data); err != nil {
-		log.Printf("Failed to publish data: %v", err)
-		return nil, status.Error(codes.Internal, "Failed to forward response")
-	}
-
-	return response, nil
-}
-
-func (s *OrderServiceHandler) convertToResponse(order *models.Order, trades *models.TradeManager) *OrderResponse {
+	order := models.NewOrder(req.ClientId, req.Symbol, models.OrderSide(req.Side), float64(req.Price), int(req.Quantity), models.OrderType(req.Type))
+	err := s.engine.PlaceRequest(order)
 
 	resp := &OrderResponse{
 		OrderId: order.ClientID,
-		Status:  "new",
+		Status:  OrderResponse_PENDING,
 	}
-	if trades.GetVolume() > 0 {
-		if order.Quantity > trades.GetVolume() {
-			resp.Status = "partially_filled"
-		} else {
-			resp.Status = "filled"
-		}
-		resp.Trades = make([]*Trade, len(trades.GetTrades()))
-		for i, t := range trades.GetTrades() {
-			resp.Trades[i] = &Trade{
-				Id:        t.ID,
-				Market:    order.Market,
-				Price:     t.Price,
-				Quantity:  int32(t.Quantity),
-				BuyOrder:  t.BuyOrder,
-				SellOrder: t.SellOrder,
-				Timestamp: t.Timestamp,
-			}
-		}
-	}
-
-	return resp
-}
-
-func (s *OrderServiceHandler) CancelOrder(ctx context.Context, req *OrderRequest) (*OrderResponse, error) {
-
-	order := &models.Order{
-		ID:        uuid.New().String(),
-		ClientID:  req.ClientId,
-		Market:    req.GetMarket(),
-		Side:      models.OrderType(req.GetSide()),
-		Price:     req.GetPrice(),
-		Quantity:  int(req.Quantity),
-		Timestamp: time.Now().UnixNano(),
-	}
-
-	trades, err := s.engine.CancelOrder(order)
 
 	if err != nil {
-		log.Printf(status.Errorf(codes.Internal, "Failed to cancel order %v", err).Error())
-		return nil, status.Error(codes.Internal, "Failed to cancel order")
+		resp.Status = OrderResponse_FAILED
+		return resp, err
 	}
-	resp := &OrderResponse{
-		OrderId: order.ID,
-		Status:  "new",
-	}
-	if trades.GetVolume() > 0 {
-		resp.Status = "cancelled"
-		resp.Trades = make([]*Trade, len(trades.GetTrades()))
-		for i, t := range trades.GetTrades() {
-			resp.Trades[i] = &Trade{
-				Id:        t.ID,
-				Market:    order.Market,
-				Price:     t.Price,
-				Quantity:  int32(t.Quantity),
-				BuyOrder:  t.BuyOrder,
-				SellOrder: t.SellOrder,
-				Timestamp: t.Timestamp,
-			}
-		}
-	}
-
-	data, err := json.Marshal(resp)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "Failed to serialize response")
-	}
-	if err := s.engine.PublishOrderResponse(ctx, req.Market, data); err != nil {
-		log.Printf("Failed to publish data: %v", err)
-		return nil, status.Error(codes.Internal, "Failed to forward response")
-	}
-
+	resp.Status = OrderResponse_CONFIRMED
 	return resp, nil
 }
 
@@ -160,11 +63,11 @@ func NewServer(port string, eng GlobalEngine) (*grpc.Server, error) {
 
 func (s *OrderServiceHandler) SubscribeOrderUpdates(req *MarketRequest, stream OrderService_SubscribeOrderUpdatesServer) error {
 	if req.Market == "" {
-		return status.Error(codes.InvalidArgument, "Market must be specified")
+		return status.Error(codes.InvalidArgument, "Symbol must be specified")
 	}
 
 	ctx := stream.Context()
-	responseChannel := make(chan models.OrderResponse, 100)
+	responseChannel := make(chan models.ExecutionReport, 100)
 	errorChannel := make(chan error, 1)
 
 	go func() {
@@ -181,25 +84,41 @@ func (s *OrderServiceHandler) SubscribeOrderUpdates(req *MarketRequest, stream O
 		case err := <-errorChannel:
 			return err
 		case response := <-responseChannel:
-			grpcResp := &OrderResponse{
-				OrderId: response.OrderID,
-				Status:  response.Status,
-				Trades:  make([]*Trade, len(response.Trades)),
-			}
-			for i, t := range response.Trades {
-				grpcResp.Trades[i] = &Trade{
-					Id:        t.ID,
-					Market:    t.Market,
-					Price:     t.Price,
-					Quantity:  int32(t.Quantity),
-					BuyOrder:  t.BuyOrder,
-					SellOrder: t.SellOrder,
-					Timestamp: t.Timestamp,
-				}
-			}
+			grpcResp := ConvertToProtoExecReport(response)
 			if err := stream.Send(grpcResp); err != nil {
 				return status.Errorf(codes.Internal, "Failed to send response: %v", err)
 			}
 		}
 	}
+}
+
+func ConvertToProtoExecReport(input models.ExecutionReport) *ExecReport {
+	execReport := &ExecReport{
+		ExecReport: make(map[string]*TradeList),
+	}
+
+	for key, trades := range input {
+		tradeList := &TradeList{
+			Trade: make([]*Trade, 0, len(trades)),
+		}
+		for _, trade := range trades {
+			protoTrade := &Trade{
+				Id:          trade.ID,
+				Status:      string(trade.Status),
+				Symbol:      trade.Symbol,
+				Price:       float32(trade.Price),
+				Quantity:    int32(trade.Quantity),
+				CumQuantity: int32(trade.CumQty),
+				ClientId:    trade.ClientOID,
+				Action:      string(trade.Action),
+				Side:        string(trade.OrderSide),
+				Timestamp:   trade.Timestamp,
+				OrderId:     trade.OrderID,
+			}
+			tradeList.Trade = append(tradeList.Trade, protoTrade)
+		}
+		execReport.ExecReport[key] = tradeList
+	}
+
+	return execReport
 }

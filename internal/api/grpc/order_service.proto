@@ -5,35 +5,51 @@ package grpc;
 option go_package = "grpc";
 
 service OrderService {
-  rpc PlaceOrder (OrderRequest) returns (OrderResponse);
-  rpc CancelOrder (OrderRequest) returns (OrderResponse);
-  rpc SubscribeOrderUpdates (MarketRequest) returns (stream OrderResponse);
+  rpc PlaceNewOrder (OrderRequest) returns (OrderResponse);
+  rpc SubscribeOrderUpdates (MarketRequest) returns (stream ExecReport);
 }
 
 message OrderRequest {
-  string market = 1;
-  string side = 2;
-  string client_id = 3;
-  double price = 4;
+  string client_id = 1;
+  string symbol = 2;
+  string side = 3;
+  float price = 4;
   int32 quantity = 5;
+  string type = 6;
+}
+
+message OrderResponse {
+  string order_id = 1;               // Unique identifier for the order
+  enum OrderStatus {
+    PENDING = 0;                     // Order is received but not yet processed
+    CONFIRMED = 1;                   // Order is confirmed
+    FAILED = 2;                      // Order placement failed
+  }
+  OrderStatus status = 2;
 }
 
 message MarketRequest {
   string market = 1;
 }
 
-message Trade {
-  string id = 1;
-  string market = 2;
-  double price = 3;
-  int32 quantity = 4;
-  string buy_order = 5;
-  string sell_order = 6;
-  int64 timestamp = 7;
+message ExecReport {
+  map<string, TradeList> exec_report = 1;
 }
 
-message OrderResponse {
-  string order_id = 1;
+message Trade {
+  string id = 1;
   string status = 2;
-  repeated Trade trades = 3;
+  string symbol = 3;
+  float price = 4;
+  int32 quantity = 5;
+  int32 cum_quantity = 6;
+  string client_id = 7;
+  string action = 8;
+  string side = 9;
+  int64 timestamp = 10;
+  string order_id = 11;
+}
+
+message TradeList {
+  repeated Trade trade = 1;
 }

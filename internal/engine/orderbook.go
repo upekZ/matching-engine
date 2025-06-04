@@ -4,21 +4,30 @@ import (
 	"encoding/json"
 	"fmt"
 	rbt "github.com/emirpasic/gods/trees/redblacktree"
-	"github.com/google/uuid"
 	"github.com/upekZ/matching-engine/internal/models"
 	"log"
-	"sync"
-	"time"
 )
 
-type OrderBook struct {
-	market            string
-	SellOrdersByPrice map[float64]*PriceInfo
-	BuyOrdersByPrice  map[float64]*PriceInfo
+type SellOrders struct {
+	SellOrdersByPrice map[float64]*models.OrderList
 	SellPrices        *rbt.Tree
-	BuyPrices         *rbt.Tree
-	OrderIndex        map[string]*models.OrderElement
-	ClientIDs         map[string]string
+}
+
+type BuyOrders struct {
+	BuyOrdersByPrice map[float64]*models.OrderList
+	BuyPrices        *rbt.Tree
+}
+
+type CourseContainer interface {
+	SellOrders | BuyOrders
+}
+
+type OrderBook struct {
+	market              string
+	SellOrderContainers SellOrders
+	BuyOrderContainers  BuyOrders
+	OrderIndex          map[string]*models.OrderElement
+	ClientIDs           map[string]string
 }
 
 func NewOrderBook(market string) *OrderBook {
@@ -45,17 +54,23 @@ func NewOrderBook(market string) *OrderBook {
 	}
 
 	return &OrderBook{
-		market:            market,
-		SellOrdersByPrice: make(map[float64]*PriceInfo),
-		BuyOrdersByPrice:  make(map[float64]*PriceInfo),
-		SellPrices:        rbt.NewWith(sellComparator),
-		BuyPrices:         rbt.NewWith(buyComparator),
-		OrderIndex:        make(map[string]*models.OrderElement),
-		ClientIDs:         make(map[string]string),
+		market: market,
+
+		SellOrderContainers: SellOrders{
+			SellOrdersByPrice: make(map[float64]*models.OrderList),
+			SellPrices:        rbt.NewWith(sellComparator),
+		},
+		BuyOrderContainers: BuyOrders{
+			BuyOrdersByPrice: make(map[float64]*models.OrderList),
+			BuyPrices:        rbt.NewWith(buyComparator),
+		},
+
+		OrderIndex: make(map[string]*models.OrderElement),
+		ClientIDs:  make(map[string]string),
 	}
 }
 
-func (ob *OrderBook) AddBuyOrder(order *models.Order) (*models.TradeManager, error) {
+func (ob *OrderBook) AddBuyOrder(order *models.Order) ([]*models.Trade, error) {
 
 	trades, err := ob.matchOrder(order, models.Less)
 
@@ -63,9 +78,8 @@ func (ob *OrderBook) AddBuyOrder(order *models.Order) (*models.TradeManager, err
 		return nil, err
 	}
 
-	if trades.GetVolume() < order.Quantity {
+	if order.Status != models.Filled {
 
-		order.Quantity -= trades.GetVolume()
 		if err := ob.addToOrderBook(order); err != nil {
 			log.Printf("Error adding order to orderbook: %v", err)
 			return trades, fmt.Errorf("order request partially executed")
@@ -74,7 +88,7 @@ func (ob *OrderBook) AddBuyOrder(order *models.Order) (*models.TradeManager, err
 	return trades, nil
 }
 
-func (ob *OrderBook) AddSellOrder(order *models.Order) (*models.TradeManager, error) {
+func (ob *OrderBook) AddSellOrder(order *models.Order) ([]*models.Trade, error) {
 
 	trades, err := ob.matchOrder(order, models.Greater)
 
@@ -82,9 +96,8 @@ func (ob *OrderBook) AddSellOrder(order *models.Order) (*models.TradeManager, er
 		return nil, err
 	}
 
-	if trades.GetVolume() < order.Quantity {
+	if order.Status != models.Filled {
 
-		order.Quantity -= trades.GetVolume()
 		if err := ob.addToOrderBook(order); err != nil {
 			log.Printf("Error adding order to orderbook: %v", err)
 			return trades, fmt.Errorf("order request partially executed")
@@ -95,38 +108,37 @@ func (ob *OrderBook) AddSellOrder(order *models.Order) (*models.TradeManager, er
 
 func (ob *OrderBook) addToOrderBook(order *models.Order) error {
 
-	var priceRef *PriceInfo
+	var priceRef *models.OrderList
 
 	switch order.Side {
 	case models.SellOrder:
-		if ob.SellOrdersByPrice[order.Price] == nil {
-			ob.SellOrdersByPrice[order.Price] = NewPriceInfo()
-			ob.SellPrices.Put(order.Price, true)
+		if ob.SellOrderContainers.SellOrdersByPrice[order.Price] == nil {
+			ob.SellOrderContainers.SellOrdersByPrice[order.Price] = models.NewOrderList()
+			ob.SellOrderContainers.SellPrices.Put(order.Price, true)
 		}
-		priceRef = ob.SellOrdersByPrice[order.Price]
+		priceRef = ob.SellOrderContainers.SellOrdersByPrice[order.Price]
 	case models.BuyOrder:
-		if ob.BuyOrdersByPrice[order.Price] == nil {
-			ob.BuyOrdersByPrice[order.Price] = NewPriceInfo()
-			ob.BuyPrices.Put(order.Price, true)
+		if ob.BuyOrderContainers.BuyOrdersByPrice[order.Price] == nil {
+			ob.BuyOrderContainers.BuyOrdersByPrice[order.Price] = models.NewOrderList()
+			ob.BuyOrderContainers.BuyPrices.Put(order.Price, true)
 		}
-		priceRef = ob.BuyOrdersByPrice[order.Price]
+		priceRef = ob.BuyOrderContainers.BuyOrdersByPrice[order.Price]
 	default:
 		return fmt.Errorf("order: %s not added to order-book invalid order type", order.ID)
 	}
 
-	priceRef.volume += order.Quantity
-	element := priceRef.orderList.Push(order)
+	element := priceRef.Push(order)
 
 	ob.OrderIndex[order.ID] = element
 	ob.ClientIDs[order.ClientID] = order.ID
 	return nil
 }
 
-func (ob *OrderBook) CancelOrder(order *models.Order) (*models.TradeManager, error) {
+func (ob *OrderBook) CancelOrder(order *models.Order) ([]*models.Trade, error) {
 
 	orderID, ok := ob.ClientIDs[order.ClientID]
 	if !ok {
-		return nil, fmt.Errorf("order %s not found in order-book", order.ID)
+		return nil, fmt.Errorf("order %s not found in order-book", order.ClientID)
 	}
 
 	orderInfo, exists := ob.OrderIndex[orderID]
@@ -134,183 +146,148 @@ func (ob *OrderBook) CancelOrder(order *models.Order) (*models.TradeManager, err
 		return nil, fmt.Errorf("order: %s doesn't exist", order.ID)
 	}
 
-	price := orderInfo.Value().Price
-	bucket := ob.SellOrdersByPrice[price]
-	bucket.Remove(orderInfo)
-
-	if bucket.volume == 0 {
-		delete(ob.SellOrdersByPrice, price)
-		ob.SellPrices.Remove(price)
-	}
-
-	trades := models.NewTradeManager()
-	trades.AddTrade(&models.Trade{
-		ID:        order.ID,
-		Price:     order.Price,
-		Quantity:  order.Quantity,
-		Market:    order.Market,
-		Status:    "cancelled",
-		BuyOrder:  "N/A",
-		SellOrder: "N/A",
-		Timestamp: time.Now().Unix(),
-	})
-	//ToDo a different type of trades or to add a field to order
-	delete(ob.OrderIndex, order.ID)
-	delete(ob.ClientIDs, order.ClientID)
-	return trades, nil
-}
-
-func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator) (*models.TradeManager, error) {
-	reqQuantity := order.Quantity
-	orderPrice := order.Price
-
-	var wg sync.WaitGroup
-	var tradeWg sync.WaitGroup
-	var toDeletePrices []float64
-	trades := models.NewTradeManager()
-
-	tradeChan := make(chan *models.TradeManager, 64)
-	errChan := make(chan error)
-
-	var keys []interface{}
-	var ordersByPrice map[float64]*PriceInfo
+	var orderList map[float64]*models.OrderList
+	var priceList *rbt.Tree
 
 	switch order.Side {
-	case models.BuyOrder:
-		keys = ob.SellPrices.Keys()
-		ordersByPrice = ob.SellOrdersByPrice
 	case models.SellOrder:
-		keys = ob.BuyPrices.Keys()
-		ordersByPrice = ob.BuyOrdersByPrice
+		orderList = ob.SellOrderContainers.SellOrdersByPrice
+		priceList = ob.SellOrderContainers.SellPrices
+	case models.BuyOrder:
+		orderList = ob.BuyOrderContainers.BuyOrdersByPrice
+		priceList = ob.BuyOrderContainers.BuyPrices
 	default:
 		return nil, fmt.Errorf("order: %s not added to order-book invalid order type", order.ID)
 	}
 
-	tradeWg.Add(1)
-	go func() {
-		defer tradeWg.Done()
-		for item := range tradeChan {
-			trades.Append(item)
-		}
-	}()
+	price := orderInfo.Value().Price
+	bucket := orderList[price]
+	bucket.Remove(orderInfo)
 
-	for _, key := range keys {
-		existingPrice := key.(float64)
-		if !returnCmp(existingPrice, orderPrice) {
-			break
-		}
-
-		bucketVolume := ordersByPrice[existingPrice].volume
-
-		reqVolFromBucket := 0
-		if reqQuantity > bucketVolume {
-			reqVolFromBucket = bucketVolume
-			reqQuantity -= bucketVolume
-			toDeletePrices = append(toDeletePrices, existingPrice) //ToDo modify iterator to delete the existingPrice on the go
-		} else {
-			reqVolFromBucket = reqQuantity
-			reqQuantity = 0
-		}
-
-		wg.Add(1)
-		go func(price float64, id string, vol int) {
-			defer wg.Done()
-			priceTrades, err := ob.matchOrdersInPrice(price, id, reqVolFromBucket, order.Side)
-			if err != nil {
-				errChan <- err
-			}
-			tradeChan <- priceTrades
-		}(existingPrice, order.ID, reqVolFromBucket)
-
-		if reqQuantity == 0 {
-			break
-		}
+	if bucket.Len() == 0 {
+		delete(orderList, price)
+		priceList.Remove(price)
 	}
 
-	wg.Wait()
-	close(tradeChan)
-	tradeWg.Wait()
+	delete(ob.OrderIndex, order.ID)
+	delete(ob.ClientIDs, order.ClientID)
 
-	select {
-	case err := <-errChan:
-		return nil, err
-	default:
-	}
+	trades := make([]*models.Trade, 1)
+	trades = append(trades, order.ExecuteCancel())
 
-	for _, id := range toDeletePrices {
-		switch order.Side {
-		case models.BuyOrder:
-			ob.SellPrices.Remove(id)
-		case models.SellOrder:
-			ob.BuyPrices.Remove(id)
-		}
-	}
 	return trades, nil
 }
 
-func (ob *OrderBook) matchOrdersInPrice(price float64, OrderID string, reqVolFromPrice int, orderType models.OrderType) (*models.TradeManager, error) {
+func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator) ([]*models.Trade, error) {
 
-	var ordersByPrice map[float64]*PriceInfo
+	orderPrice := order.Price
 
-	switch orderType {
+	var keys []interface{}
+
+	switch order.Side {
 	case models.BuyOrder:
-		ordersByPrice = ob.SellOrdersByPrice
+		keys = ob.SellOrderContainers.SellPrices.Keys()
 	case models.SellOrder:
-		ordersByPrice = ob.BuyOrdersByPrice
+		keys = ob.BuyOrderContainers.BuyPrices.Keys()
+	default:
+		return nil, fmt.Errorf("order: %s not added to order-book invalid order type", order.ID)
+	}
+
+	allTrades := make([]*models.Trade, 0)
+
+	for _, key := range keys {
+
+		currentPrice := key.(float64)
+
+		if !returnCmp(currentPrice, orderPrice) || order.Status == models.Filled {
+			break
+		}
+
+		if trades, err := ob.matchOrdersInPrice(currentPrice, order); err != nil {
+			return allTrades, err
+		} else {
+			allTrades = append(allTrades, trades...)
+		}
+	}
+	return allTrades, nil
+}
+
+func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*models.Trade, error) {
+
+	var ordersByPrice map[float64]*models.OrderList
+
+	switch order.Side {
+	case models.BuyOrder:
+		ordersByPrice = ob.BuyOrderContainers.BuyOrdersByPrice
+	case models.SellOrder:
+		ordersByPrice = ob.SellOrderContainers.SellOrdersByPrice
 	default:
 		return nil, fmt.Errorf("order matching failed\n")
 	}
 	priceInfo := ordersByPrice[price]
 
-	e := priceInfo.orderList.Front()
+	e := priceInfo.Front()
 
-	matchedTrades := models.NewTradeManager()
+	matchedTrades := make([]*models.Trade, 0)
 
-	for e != nil {
+	for e != nil && order.Status != models.Filled {
 
 		bookOrder := e.Value()
-		if bookOrder.Quantity <= reqVolFromPrice {
-			reqVolFromPrice -= bookOrder.Quantity
-			delete(ob.OrderIndex, bookOrder.ID)
 
-			priceInfo.orderList.Pop()
-			e = priceInfo.orderList.Front()
+		tradeQty := 0
 
-			matchedTrades.AddTrade(&models.Trade{
-				ID:        uuid.New().String(),
-				Price:     bookOrder.Price,
-				Quantity:  bookOrder.Quantity,
-				Market:    bookOrder.Market,
-				Status:    "filled",
-				BuyOrder:  OrderID,
-				SellOrder: bookOrder.ClientID,
-				Timestamp: time.Now().Unix(),
-			})
-
-			if e == nil {
-				delete(ob.SellOrdersByPrice, price)
-				ob.SellPrices.Remove(price)
-			}
-
+		if bookOrder.Quantity <= order.AvailableQty {
+			tradeQty = bookOrder.Quantity
 		} else {
-			bookOrder.ReduceQuantity(reqVolFromPrice)
-
-			matchedTrades.AddTrade(&models.Trade{
-				ID:        uuid.New().String(),
-				Price:     bookOrder.Price,
-				Quantity:  reqVolFromPrice,
-				Market:    bookOrder.Market,
-				Status:    "filled",
-				BuyOrder:  OrderID,
-				SellOrder: bookOrder.ClientID,
-				Timestamp: time.Now().Unix(),
-			})
-
-			break
+			tradeQty = order.AvailableQty
 		}
+
+		matchedTrades = append(matchedTrades, bookOrder.ExecuteTrade(tradeQty, price))
+		matchedTrades = append(matchedTrades, order.ExecuteTrade(tradeQty, price))
 	}
 
 	return matchedTrades, nil
+}
+
+func (ob *OrderBook) removeOrder(order *models.Order) error {
+
+	orderID, ok := ob.ClientIDs[order.ClientID]
+	if !ok {
+		return fmt.Errorf("order %s not found in order-book", order.ClientID)
+	}
+
+	orderInfo, exists := ob.OrderIndex[orderID]
+	if !exists {
+		return fmt.Errorf("order: %s doesn't exist", order.ID)
+	}
+
+	var orderList map[float64]*models.OrderList
+	var priceList *rbt.Tree
+
+	switch order.Side {
+	case models.SellOrder:
+		orderList = ob.SellOrderContainers.SellOrdersByPrice
+		priceList = ob.SellOrderContainers.SellPrices
+	case models.BuyOrder:
+		orderList = ob.BuyOrderContainers.BuyOrdersByPrice
+		priceList = ob.BuyOrderContainers.BuyPrices
+	default:
+		return fmt.Errorf("order: %s not added to order-book invalid order type", order.ID)
+	}
+
+	price := orderInfo.Value().Price
+	bucket := orderList[price]
+	bucket.Remove(orderInfo)
+
+	if bucket.Len() == 0 {
+		delete(orderList, price)
+		priceList.Remove(price)
+	}
+
+	delete(ob.OrderIndex, order.ID)
+	delete(ob.ClientIDs, order.ClientID)
+
+	return nil
 }
 
 func (ob *OrderBook) ToJSON() ([]byte, error) {

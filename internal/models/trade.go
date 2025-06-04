@@ -4,15 +4,26 @@ import (
 	"encoding/json"
 )
 
+type ActionType string
+type ExecutionReport map[string][]*Trade
+
+const (
+	TradeAction  ActionType = "trade"
+	CancelAction ActionType = "cancel"
+)
+
 type Trade struct {
-	ID        string  `json:"id"`
-	Status    string  `json:"status"`
-	Market    string  `json:"market"`
-	Price     float64 `json:"price"`
-	Quantity  int     `json:"quantity"`
-	BuyOrder  string  `json:"buy_order"`
-	SellOrder string  `json:"sell_order"`
-	Timestamp int64   `json:"timestamp"`
+	ID        string      `json:"id"`
+	Status    OrderStatus `json:"status"`
+	Symbol    string      `json:"symbol"`
+	Price     float64     `json:"price"`
+	Quantity  int         `json:"quantity"`
+	CumQty    int         `json:"cumQty"`
+	OrderID   string      `json:"order_id"`
+	ClientOID string      `json:"client_oid"`
+	Action    ActionType  `json:"action"`
+	OrderSide OrderSide   `json:"order_side"`
+	Timestamp int64       `json:"timestamp"`
 }
 
 func (t *Trade) ToJSON() ([]byte, error) {

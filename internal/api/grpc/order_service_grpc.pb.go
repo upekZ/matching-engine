@@ -18,8 +18,7 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type OrderServiceClient interface {
-	PlaceOrder(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderResponse, error)
-	CancelOrder(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderResponse, error)
+	PlaceNewOrder(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderResponse, error)
 	SubscribeOrderUpdates(ctx context.Context, in *MarketRequest, opts ...grpc.CallOption) (OrderService_SubscribeOrderUpdatesClient, error)
 }
 
@@ -31,18 +30,9 @@ func NewOrderServiceClient(cc grpc.ClientConnInterface) OrderServiceClient {
 	return &orderServiceClient{cc}
 }
 
-func (c *orderServiceClient) PlaceOrder(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderResponse, error) {
+func (c *orderServiceClient) PlaceNewOrder(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderResponse, error) {
 	out := new(OrderResponse)
-	err := c.cc.Invoke(ctx, "/grpc.OrderService/PlaceOrder", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *orderServiceClient) CancelOrder(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderResponse, error) {
-	out := new(OrderResponse)
-	err := c.cc.Invoke(ctx, "/grpc.OrderService/CancelOrder", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/grpc.OrderService/PlaceNewOrder", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +55,7 @@ func (c *orderServiceClient) SubscribeOrderUpdates(ctx context.Context, in *Mark
 }
 
 type OrderService_SubscribeOrderUpdatesClient interface {
-	Recv() (*OrderResponse, error)
+	Recv() (*ExecReport, error)
 	grpc.ClientStream
 }
 
@@ -73,8 +63,8 @@ type orderServiceSubscribeOrderUpdatesClient struct {
 	grpc.ClientStream
 }
 
-func (x *orderServiceSubscribeOrderUpdatesClient) Recv() (*OrderResponse, error) {
-	m := new(OrderResponse)
+func (x *orderServiceSubscribeOrderUpdatesClient) Recv() (*ExecReport, error) {
+	m := new(ExecReport)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -85,8 +75,7 @@ func (x *orderServiceSubscribeOrderUpdatesClient) Recv() (*OrderResponse, error)
 // All implementations must embed UnimplementedOrderServiceServer
 // for forward compatibility
 type OrderServiceServer interface {
-	PlaceOrder(context.Context, *OrderRequest) (*OrderResponse, error)
-	CancelOrder(context.Context, *OrderRequest) (*OrderResponse, error)
+	PlaceNewOrder(context.Context, *OrderRequest) (*OrderResponse, error)
 	SubscribeOrderUpdates(*MarketRequest, OrderService_SubscribeOrderUpdatesServer) error
 	mustEmbedUnimplementedOrderServiceServer()
 }
@@ -95,11 +84,8 @@ type OrderServiceServer interface {
 type UnimplementedOrderServiceServer struct {
 }
 
-func (UnimplementedOrderServiceServer) PlaceOrder(context.Context, *OrderRequest) (*OrderResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method PlaceOrder not implemented")
-}
-func (UnimplementedOrderServiceServer) CancelOrder(context.Context, *OrderRequest) (*OrderResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CancelOrder not implemented")
+func (UnimplementedOrderServiceServer) PlaceNewOrder(context.Context, *OrderRequest) (*OrderResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PlaceNewOrder not implemented")
 }
 func (UnimplementedOrderServiceServer) SubscribeOrderUpdates(*MarketRequest, OrderService_SubscribeOrderUpdatesServer) error {
 	return status.Errorf(codes.Unimplemented, "method SubscribeOrderUpdates not implemented")
@@ -117,38 +103,20 @@ func RegisterOrderServiceServer(s grpc.ServiceRegistrar, srv OrderServiceServer)
 	s.RegisterService(&OrderService_ServiceDesc, srv)
 }
 
-func _OrderService_PlaceOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _OrderService_PlaceNewOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(OrderRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(OrderServiceServer).PlaceOrder(ctx, in)
+		return srv.(OrderServiceServer).PlaceNewOrder(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/grpc.OrderService/PlaceOrder",
+		FullMethod: "/grpc.OrderService/PlaceNewOrder",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(OrderServiceServer).PlaceOrder(ctx, req.(*OrderRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _OrderService_CancelOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(OrderRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(OrderServiceServer).CancelOrder(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/grpc.OrderService/CancelOrder",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(OrderServiceServer).CancelOrder(ctx, req.(*OrderRequest))
+		return srv.(OrderServiceServer).PlaceNewOrder(ctx, req.(*OrderRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -162,7 +130,7 @@ func _OrderService_SubscribeOrderUpdates_Handler(srv interface{}, stream grpc.Se
 }
 
 type OrderService_SubscribeOrderUpdatesServer interface {
-	Send(*OrderResponse) error
+	Send(*ExecReport) error
 	grpc.ServerStream
 }
 
@@ -170,7 +138,7 @@ type orderServiceSubscribeOrderUpdatesServer struct {
 	grpc.ServerStream
 }
 
-func (x *orderServiceSubscribeOrderUpdatesServer) Send(m *OrderResponse) error {
+func (x *orderServiceSubscribeOrderUpdatesServer) Send(m *ExecReport) error {
 	return x.ServerStream.SendMsg(m)
 }
 
@@ -182,12 +150,8 @@ var OrderService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*OrderServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "PlaceOrder",
-			Handler:    _OrderService_PlaceOrder_Handler,
-		},
-		{
-			MethodName: "CancelOrder",
-			Handler:    _OrderService_CancelOrder_Handler,
+			MethodName: "PlaceNewOrder",
+			Handler:    _OrderService_PlaceNewOrder_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
