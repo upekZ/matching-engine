@@ -69,7 +69,8 @@ A Matching engine for trading systems, built with Go. It supports order placemen
       "client_id": "id-from-client"
       "side": "buy",
       "price": 50000.0,
-      "quantity": 1
+      "quantity": 1,
+      "req_type": "newLimitOrder"
   }'
   ```
     - REST response: created order with updated id and timestamp
@@ -93,7 +94,7 @@ A Matching engine for trading systems, built with Go. It supports order placemen
         - Click “Invoke” to start streaming.
     2. Place orders via REST to trigger updates (see above).
     3. Observe streamed `OrderResponse` messages in Postman:
-        - Example: `{"order_id":"...", "status":"filled", "trades":[{"id":"...", "market":"BTC-USD", ...}]}`
+        - Example: `{"order_id":"...", "trades":[{"id":"...", "market":"BTC-USD", ...}]}`
 
 ## Architecture
 - **Presentation Layer**:
@@ -109,10 +110,11 @@ A Matching engine for trading systems, built with Go. It supports order placemen
     - gRPC types are isolated to the presentation layer.
 
 ## Future Improvements
+- Modifications to orderBook are made when trades are executed. This will be updated to use copies of orders and then to alter orderbook once all trades are completed.
 - Engine is only developed for LimitOrders. No Order types considered so far. to expand to other types of orders
 - Current implementation expects to cancel->New when order needs to be modified. This needs to be expanded to Cancel and New if priority is impacted only and modify if no impact for priority --> Add Modify Order
 - At the moment cancel order is defined to require an Order Type. This needs to be modified with ability to cancel by client ID
-- Engine uses redis both as an in-memory store and a message broker. Implementation uses a single redis instance. functionality can be seperated to facilitate a seperate store and broker
+- Engine uses redis both as an in-memory store and a message broker. Implementation uses a single redis instance. functionality can be seperated to facilitate a separate store and broker
 - Add Integration and Unit Tests
 - Add a persistent storage for routine backups
 - To Implement web-sockets with grpc
