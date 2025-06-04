@@ -218,9 +218,9 @@ func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*
 
 	switch order.Side {
 	case models.BuyOrder:
-		ordersByPrice = ob.BuyOrderContainers.BuyOrdersByPrice
-	case models.SellOrder:
 		ordersByPrice = ob.SellOrderContainers.SellOrdersByPrice
+	case models.SellOrder:
+		ordersByPrice = ob.BuyOrderContainers.BuyOrdersByPrice
 	default:
 		return nil, fmt.Errorf("order matching failed\n")
 	}

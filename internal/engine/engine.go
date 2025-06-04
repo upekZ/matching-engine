@@ -65,7 +65,7 @@ func (e *Engine) PlaceRequest(orderReq *models.Order) error {
 		}
 		e.mutex.Unlock()
 	}
-
+	orderReq = newOrder
 	return e.processRequest(newOrder, orderChan)
 }
 
@@ -182,11 +182,16 @@ func (e *Engine) processTradeResponse(ctx context.Context, trades []*models.Trad
 			execReports[t.OrderID] = make([]*models.Trade, 16)
 		}
 
-		currentOrder := e.orderBooks[t.Symbol].OrderIndex[t.OrderID].Value()
+		var currentOrder *models.Order
+		if element := e.orderBooks[t.Symbol].OrderIndex[t.OrderID]; element != nil {
+			currentOrder = element.Value()
+		}
 
-		if t.Status == models.Filled {
-			if err := e.orderBooks[t.Symbol].removeOrder(currentOrder); err != nil {
-				return err
+		if currentOrder != nil && t.Status == models.Filled {
+			if e.orderBooks[t.Symbol].OrderIndex[currentOrder.ID] != nil {
+				if err := e.orderBooks[t.Symbol].removeOrder(currentOrder); err != nil {
+					return err
+				}
 			}
 		}
 		execReports[t.OrderID] = append(execReports[t.OrderID], t)
