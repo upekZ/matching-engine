@@ -12,7 +12,13 @@ func (ob *OrderBook) processRequest(order *models.Order, returnCmp models.Compar
 	executions := make([]*models.Execution, 0, 3)
 	executions = append(executions, order.ExecuteNew())
 
-	if _, err := order.IsValidReq(); err != nil {
+	if err := order.ValidateReq(); err != nil {
+		executions = append(executions, order.ExecuteReject())
+		return executions, err
+	}
+
+	if err := ob.validateReq(order); err != nil {
+		executions = append(executions, order.ExecuteReject())
 		return executions, err
 	}
 
@@ -49,7 +55,7 @@ func (ob *OrderBook) addToOrderBook(order *models.Order) *models.Execution {
 	ob.OrderIndex[order.ID] = element
 	ob.ClientIDs[order.ClientID] = order.ID
 
-	return order.ExecuteAccepted()
+	return order.ExecuteAccept()
 }
 
 func (ob *OrderBook) CancelOrder(order *models.Order) ([]*models.Execution, error) {
@@ -145,6 +151,20 @@ func (ob *OrderBook) ProcessExecutionsToReport(trades []*models.Execution) model
 	}
 
 	return execReports
+}
+
+func (ob *OrderBook) validateReq(order *models.Order) error {
+	var errStr string
+	if order.ReqType != models.CancelOrder {
+		if _, exists := ob.ClientIDs[order.ClientID]; exists {
+			errStr += "duplicate order id"
+		}
+	}
+
+	if errStr != "" {
+		return fmt.Errorf(errStr)
+	}
+	return nil
 }
 
 func (ob *OrderBook) removeOrder(order models.Order) error {

@@ -17,7 +17,7 @@ const (
 )
 
 const (
-	NewOrderState   OrderStatus = "newOrder"
+	NewOrderState   OrderStatus = "new"
 	PartiallyFilled OrderStatus = "partiallyFilled"
 	Filled          OrderStatus = "filled"
 	Cancelled       OrderStatus = "cancelled"
@@ -25,8 +25,9 @@ const (
 )
 
 const (
-	NewLimitOrder OrderType = "newLimitOrder"
-	CancelOrder   OrderType = "cancelOrder"
+	NewLimitOrder  OrderType = "newLimitOrder"
+	NewMarketOrder OrderType = "newMarketOrder"
+	CancelOrder    OrderType = "cancelOrder"
 )
 
 type Order struct {
@@ -77,28 +78,41 @@ func (o *Order) GetOppositeOrderType() OrderSide {
 	}
 }
 
-func (o *Order) IsValidReq() (bool, error) {
+func (o *Order) ValidateReq() error {
 
 	var errorString string
-	isValid := true
 
 	if o.Price <= 0 {
-		isValid = false
 		errorString += "invalid price entry\t"
 	}
 
 	if o.Quantity <= 0 {
-		isValid = false
 		errorString += "invalid quantity entry\t"
 	}
 
-	//++Matching level validations
+	switch o.ReqType {
+	case NewLimitOrder:
+	case NewMarketOrder:
+	case CancelOrder:
 
-	if isValid {
-		return isValid, nil
-	} else {
-		return isValid, fmt.Errorf(errorString)
+	default:
+		errorString += "invalid req_type\t"
 	}
+
+	switch o.Side {
+	case BuyOrder:
+	case SellOrder:
+
+	default:
+		errorString += "invalid side\t"
+
+	}
+
+	if errorString != "" {
+		return fmt.Errorf(errorString)
+	}
+	return nil
+
 }
 
 func (o *Order) ExecuteNew() *Execution {
@@ -107,7 +121,7 @@ func (o *Order) ExecuteNew() *Execution {
 		ID:         uuid.New().String(),
 		OPrice:     o.Price,
 		TradePrice: 0,
-		Quantity:   0,
+		Quantity:   o.Quantity,
 		CumQty:     o.FilledQty,
 		OID:        o.ID,
 		ClientOID:  o.ClientID,
@@ -182,7 +196,7 @@ func (o *Order) ExecuteCancel() *Execution {
 	}
 }
 
-func (o *Order) ExecuteAccepted() *Execution {
+func (o *Order) ExecuteAccept() *Execution {
 	return &Execution{
 		ID:        uuid.New().String(),
 		OPrice:    o.Price,

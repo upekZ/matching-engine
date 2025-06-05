@@ -8,10 +8,10 @@ type ActionType string
 type ExecutionReport map[string][]*Execution
 
 const (
-	ExecuteNew    ActionType = "newRequest"
+	ExecuteNew    ActionType = "new"
 	ExecuteTrade  ActionType = "trade"
-	ExecuteCancel ActionType = "cancel"
-	ExecuteReject ActionType = "reject"
+	ExecuteCancel ActionType = "canceled"
+	ExecuteReject ActionType = "rejected"
 	ExecuteAccept ActionType = "accept"
 )
 
