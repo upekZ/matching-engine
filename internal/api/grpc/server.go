@@ -13,7 +13,6 @@ import (
 
 type GlobalEngine interface {
 	PlaceRequest(order *models.Order) models.Order
-	PublishOrderResponse(ctx context.Context, market string, data []byte) error
 	SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error
 }
 

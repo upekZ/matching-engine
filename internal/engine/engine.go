@@ -97,15 +97,16 @@ func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) 
 	select {
 	case trades := <-execChan:
 		executions := book.ProcessExecutionsToReport(trades)
-		if err := e.publishExecutions(context.Background(), order.Symbol, executions); err != nil {
+
+		pubCtx, pubCancel := context.WithTimeout(e.ctx, 2*time.Second)
+		defer pubCancel()
+
+		if err := e.publishExecutions(pubCtx, order.Symbol, executions); err != nil {
+			log.Printf("Error publishing execusions: %s", err.Error())
 		}
 		if err := e.CacheClient.SaveTrades(order.Symbol, trades); err != nil {
 			log.Printf("Error caching execusions: %s", err.Error())
 		}
-		//ToDo save order-book to redis
-		//if err := e.CacheClient.SaveOrderBook(order.Symbol, book); err != nil {
-		//	log.Printf("error caching order-book")
-		//}
 	case <-ctx.Done():
 		log.Printf("order request failed - timeout: %s", ctx.Err())
 	}
@@ -153,14 +154,14 @@ func (e *Engine) publishExecutions(ctx context.Context, symbol string, execRepor
 		return fmt.Errorf("failed to publish execution reports")
 	}
 
-	if err := e.PublishOrderResponse(ctx, symbol, data); err != nil {
+	if err := e.publishOrderResponse(ctx, symbol, data); err != nil {
 		log.Printf("Failed to publish data: %v", err)
 		return fmt.Errorf("failed to publish execution reports")
 	}
 	return nil
 }
 
-func (e *Engine) PublishOrderResponse(ctx context.Context, market string, data []byte) error {
+func (e *Engine) publishOrderResponse(ctx context.Context, market string, data []byte) error {
 	return e.CacheClient.PublishOrderResponse(ctx, market, data)
 }
 
