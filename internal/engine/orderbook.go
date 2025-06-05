@@ -9,7 +9,7 @@ import (
 
 func (ob *OrderBook) processRequest(order *models.Order, returnCmp models.Comparator) ([]*models.Execution, error) {
 
-	executions := make([]*models.Execution, 3)
+	executions := make([]*models.Execution, 0, 3)
 	executions = append(executions, order.ExecuteNew())
 
 	if _, err := order.IsValidReq(); err != nil {
@@ -54,7 +54,7 @@ func (ob *OrderBook) addToOrderBook(order *models.Order) *models.Execution {
 
 func (ob *OrderBook) CancelOrder(order *models.Order) ([]*models.Execution, error) {
 
-	execution := make([]*models.Execution, 1)
+	execution := make([]*models.Execution, 0, 2)
 	execution = append(execution, order.ExecuteNew())
 
 	if err := ob.removeOrder(*order); err != nil {
@@ -75,9 +75,9 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 
 	keys := priceList.Keys()
 
-	allTrades := make([]*models.Execution, 0)
+	allTrades := make([]*models.Execution, 0, 2)
 
-	filledOrders := make([]models.Order, 0)
+	filledOrders := make([]models.Order, 0, 1)
 
 	defer func() {
 		//filled orders are removed from Order-book at the end after request completion
@@ -107,7 +107,7 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 
 func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*models.Execution, []models.Order) {
 
-	filledOrders := make([]models.Order, 1)
+	filledOrders := make([]models.Order, 0, 1)
 
 	ordersByPrice, _ := ob.getContainers(order.GetOppositeOrderType())
 
@@ -115,7 +115,7 @@ func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*
 
 	e := priceInfo.Front()
 
-	matchedTrades := make([]*models.Execution, 0)
+	matchedTrades := make([]*models.Execution, 0, 2)
 
 	for e != nil && order.Status != models.Filled {
 

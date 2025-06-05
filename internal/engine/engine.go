@@ -44,11 +44,7 @@ func New(cacheStore CacheStore) *Engine {
 
 func (e *Engine) PlaceRequest(orderReq *models.Order) models.Order {
 
-	/*
-		proposed solution creates market specific channels dynamically if not in existence.
-		this will cause a perf hit with locking order channels when reading and creating channels + order-books when required.
-		if markets aren't to be updated dynamically but to be added outside of placing orders, blocking could be limited only to reading order channels
-	*/
+	//proposed solution creates symbol specific channels dynamically if not in existence.
 
 	newOrder := models.NewOrder(orderReq.ClientID, orderReq.Symbol, orderReq.Side, orderReq.Price, orderReq.Quantity, orderReq.ReqType)
 
@@ -119,7 +115,7 @@ func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 	for {
 		select {
 		case req := <-orderChan:
-			var executions []*models.Execution
+			executions := make([]*models.Execution, 0, 2)
 			var err error
 
 			if req.isNewOrder {

@@ -102,7 +102,7 @@ func ConvertToProtoExecReport(input models.ExecutionReport) *ExecReport {
 
 	for key, trades := range input {
 		tradeList := &TradeList{
-			Trade: make([]*Trade, 1, len(input[key])),
+			Trade: make([]*Trade, 0, len(input[key])),
 		}
 		for _, trade := range trades {
 			fmt.Printf("iterating over trades: %s\n", key)
