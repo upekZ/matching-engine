@@ -101,8 +101,8 @@ A Matching engine for trading systems, built with Go. It supports order placemen
     - REST API (`internal/api/rest`): Handles order placement (New Order and Cancel Order).
     - gRPC (`internal/api/grpc`): Streams trade updates to gateways.
 - **Business Logic**:
+    - Each request will spawn a new goroutine and send request ot order-book. Each order-book has a goroutine which will process requests sequentially
     - Engine (`internal/engine`): Processes orders using channels per symbol.
-    - Processes multiple price levels concurrently
 - **Data Layer**:
     - Redis (`internal/storage/redis`): Stores executions (`trade:<id>`) and facilitates Pub/Sub (`order_responses:<symbol>`).
 - **Type Safety**:
