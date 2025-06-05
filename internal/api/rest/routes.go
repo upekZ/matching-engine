@@ -22,5 +22,6 @@ func (app *Server) loadChiRoutes() *chi.Mux {
 
 func (app *Server) loadUserRoutes(router chi.Router) {
 
-	router.Post("/", app.OrderRequest)
+	router.Post("/", app.NewLimitOrderRequest)
+	router.Delete("/", app.CancelOrderRequest)
 }

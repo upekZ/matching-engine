@@ -50,9 +50,11 @@ func (e *Engine) PlaceRequest(orderReq *models.Order) (models.Order, error) {
 		this will cause a perf hit with locking order channels when reading and creating channels + order-books when required.
 		if markets aren't to be updated dynamically but to be added outside of placing orders, blocking could be limited only to reading order channels
 	*/
+
+	var err error
 	newOrder := models.NewOrder(orderReq.ClientID, orderReq.Symbol, orderReq.Side, orderReq.Price, orderReq.Quantity, orderReq.ReqType)
 
-	if _, err := newOrder.IsValidReq(); err != nil {
+	if _, err = newOrder.IsValidReq(); err != nil {
 		var exec []*models.Execution
 		exec = append(exec, newOrder.ExecuteReject())
 		log.Printf(err.Error())
@@ -62,26 +64,22 @@ func (e *Engine) PlaceRequest(orderReq *models.Order) (models.Order, error) {
 		return *orderReq, err
 	}
 
-	e.mutex.RLock()
+	e.mutex.Lock()
 	orderChan, exists := e.orderChannels[newOrder.Symbol]
-	e.mutex.RUnlock()
-
 	if !exists {
-		e.mutex.Lock()
-		if _, exists := e.orderChannels[newOrder.Symbol]; !exists { //double lock to be sure
-			orderChan = e.addNewSymbol(newOrder.Symbol)
-		} else {
-			orderChan = e.orderChannels[newOrder.Symbol]
-		}
-		e.mutex.Unlock()
+		orderChan = e.addNewSymbol(newOrder.Symbol)
+		e.orderChannels[newOrder.Symbol] = orderChan
 	}
+	e.mutex.Unlock()
 
-	return *orderReq, e.processRequest(newOrder, orderChan)
+	go e.processRequest(newOrder, orderChan)
+
+	return *orderReq, err
 }
 
 func (e *Engine) addNewSymbol(symbol string) chan orderRequest {
 	book := NewOrderBook(symbol)
-	channel := make(chan orderRequest)
+	channel := make(chan orderRequest, 264)
 	e.orderBooks[symbol] = book
 	e.orderChannels[symbol] = channel
 
@@ -90,7 +88,7 @@ func (e *Engine) addNewSymbol(symbol string) chan orderRequest {
 	return channel
 }
 
-func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) error {
+func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) {
 
 	ctx, cancel := context.WithTimeout(e.ctx, 10*time.Second)
 
@@ -117,28 +115,20 @@ func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) 
 
 	select {
 	case trades := <-tradeChan:
-		e.mutex.RLock()
-		book, exists := e.orderBooks[order.Symbol]
-		e.mutex.RUnlock()
-		if !exists {
-			log.Printf("orderbook does not exist for market: %s", order.Symbol)
-			return fmt.Errorf("order book for market not found")
-		}
+		//ToDo save order-book to redis
+		//book, _ := e.orderBooks[order.Symbol]
 		//if err := e.CacheClient.SaveOrderBook(order.Symbol, book); err != nil {
 		//	return nil, err
 		//}
-		log.Printf("book name %s", book.market)
+		//log.Printf("book name %s", book.market)
 
 		if err := e.CacheClient.SaveTrades(order.Symbol, trades); err != nil {
-			return err
+			log.Printf("Error caching execusions: %s", err.Error())
 		}
-
-		return nil
 	case err := <-errorChan:
-		return err
+		log.Printf("Error processing trades: %s", err.Error())
 	case <-ctx.Done():
 		log.Printf("order request failed - timeout: %s", ctx.Err())
-		return fmt.Errorf("order request failed")
 	}
 }
 

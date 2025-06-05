@@ -15,19 +15,27 @@ type Channel interface {
 	ServeWS() http.HandlerFunc
 }
 
-func (app *Server) OrderRequest(writer http.ResponseWriter, req *http.Request) {
+func (app *Server) NewLimitOrderRequest(writer http.ResponseWriter, req *http.Request) {
+	app.NewRequest(writer, req, models.NewLimitOrder)
+}
+
+func (app *Server) CancelOrderRequest(writer http.ResponseWriter, req *http.Request) {
+	app.NewRequest(writer, req, models.CancelOrder)
+}
+
+func (app *Server) NewRequest(writer http.ResponseWriter, req *http.Request, orderType models.OrderType) {
 
 	var order models.Order
 
 	if err := json.NewDecoder(req.Body).Decode(&order); err != nil {
-		log.Printf("Error decoding body: %v", err)
+		log.Printf("error decoding body: %v", err)
 		http.Error(writer, "order request failure", http.StatusInternalServerError)
 		return
 	}
 	orderResp, err := app.service.PlaceRequest(&order)
 
 	if err != nil {
-		log.Printf("Error placing order: %v", err)
+		log.Printf("error in %s: %v", string(orderType), err)
 		http.Error(writer, "order request failure", http.StatusInternalServerError)
 		return
 	}
