@@ -9,10 +9,10 @@ import (
 
 func (ob *OrderBook) processRequest(order *models.Order, returnCmp models.Comparator) ([]*models.Execution, error) {
 
-	newState := order.ExecuteNew()
+	newStateExec := order.ExecuteNew()
 
 	executions, err := ob.matchOrder(order, returnCmp)
-	executions = append(executions, newState)
+	executions = append(executions, newStateExec)
 
 	if err != nil {
 		return executions, err
@@ -99,6 +99,17 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 
 	allTrades := make([]*models.Execution, 0)
 
+	filledOrders := make([]models.Order, 0)
+
+	defer func() {
+		//filled orders are removed from Order-book at the end after request completion
+		for _, order := range filledOrders {
+			if err := ob.removeOrder(order); err != nil {
+				log.Printf("Error removing order[%s] from orderbook: %v", order.ClientID, err)
+			}
+		}
+	}()
+
 	for _, key := range keys {
 
 		currentPrice := key.(float64)
@@ -107,16 +118,22 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 			break
 		}
 
-		if trades, err := ob.matchOrdersInPrice(currentPrice, order); err != nil {
+		trades, removeOrders, err := ob.matchOrdersInPrice(currentPrice, order)
+		filledOrders = append(filledOrders, removeOrders...)
+
+		if err != nil {
 			return allTrades, err
 		} else {
 			allTrades = append(allTrades, trades...)
 		}
 	}
+
 	return allTrades, nil
 }
 
-func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*models.Execution, error) {
+func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*models.Execution, []models.Order, error) {
+
+	filledOrders := make([]models.Order, 1)
 
 	ordersByPrice, _ := ob.getContainers(order.GetOppositeOrderType())
 
@@ -133,6 +150,7 @@ func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*
 		tradeQty := 0
 
 		if bookOrder.Quantity <= order.AvailableQty {
+			filledOrders = append(filledOrders, *bookOrder) //only add orders in order-book as filled orders
 			tradeQty = bookOrder.Quantity
 		} else {
 			tradeQty = order.AvailableQty
@@ -144,7 +162,7 @@ func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*
 		e = e.Next()
 	}
 
-	return matchedTrades, nil
+	return matchedTrades, filledOrders, nil
 }
 
 func (ob *OrderBook) ProcessExecutionsToReport(trades []*models.Execution) models.ExecutionReport {
@@ -158,7 +176,7 @@ func (ob *OrderBook) ProcessExecutionsToReport(trades []*models.Execution) model
 	return execReports
 }
 
-func (ob *OrderBook) removeOrder(order *models.Order) error {
+func (ob *OrderBook) removeOrder(order models.Order) error {
 
 	orderID, ok := ob.ClientIDs[order.ClientID]
 	if !ok {
