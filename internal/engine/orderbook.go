@@ -9,21 +9,17 @@ import (
 
 func (ob *OrderBook) processRequest(order *models.Order, returnCmp models.Comparator) ([]*models.Execution, error) {
 
-	newStateExec := order.ExecuteNew()
+	executions := make([]*models.Execution, 3)
+	executions = append(executions, order.ExecuteNew())
 
-	executions, err := ob.matchOrder(order, returnCmp)
-	executions = append(executions, newStateExec)
-
-	if err != nil {
+	if _, err := order.IsValidReq(); err != nil {
 		return executions, err
 	}
 
-	if order.ReqType == models.NewLimitOrder && order.Status != models.Filled {
+	executions = append(executions, ob.matchOrder(order, returnCmp)...)
 
-		if err := ob.addToOrderBook(order); err != nil {
-			log.Printf("Error adding order to orderbook: %v", err)
-			return executions, fmt.Errorf("order request partially executed")
-		}
+	if order.ReqType == models.NewLimitOrder && order.Status != models.Filled {
+		executions = append(executions, ob.matchOrder(order, returnCmp)...)
 	}
 	return executions, nil
 }
@@ -37,7 +33,7 @@ func (ob *OrderBook) AddSellRequest(order *models.Order) ([]*models.Execution, e
 	return ob.processRequest(order, models.Greater)
 }
 
-func (ob *OrderBook) addToOrderBook(order *models.Order) error {
+func (ob *OrderBook) addToOrderBook(order *models.Order) *models.Execution {
 
 	priceMap, priceList := ob.getContainers(order.Side)
 
@@ -52,7 +48,8 @@ func (ob *OrderBook) addToOrderBook(order *models.Order) error {
 
 	ob.OrderIndex[order.ID] = element
 	ob.ClientIDs[order.ClientID] = order.ID
-	return nil
+
+	return order.ExecuteAccepted()
 }
 
 func (ob *OrderBook) CancelOrder(order *models.Order) ([]*models.Execution, error) {
@@ -60,36 +57,17 @@ func (ob *OrderBook) CancelOrder(order *models.Order) ([]*models.Execution, erro
 	execution := make([]*models.Execution, 1)
 	execution = append(execution, order.ExecuteNew())
 
-	orderID, ok := ob.ClientIDs[order.ClientID]
-	if !ok {
-		return execution, fmt.Errorf("order %s not found in order-book", order.ClientID)
+	if err := ob.removeOrder(*order); err != nil {
+		execution = append(execution, order.ExecuteReject())
+		return execution, fmt.Errorf("cancel failure: %s", err.Error())
 	}
-
-	orderInfo, exists := ob.OrderIndex[orderID]
-	if !exists {
-		return execution, fmt.Errorf("order: %s doesn't exist", order.ID)
-	}
-
-	orderList, priceList := ob.getContainers(order.Side)
-
-	price := orderInfo.Value().Price
-	list := orderList[price]
-	list.Remove(orderInfo)
-
-	if list.Len() == 0 {
-		delete(orderList, price)
-		priceList.Remove(price)
-	}
-
-	delete(ob.OrderIndex, order.ID)
-	delete(ob.ClientIDs, order.ClientID)
 
 	execution = append(execution, order.ExecuteCancel())
 
 	return execution, nil
 }
 
-func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator) ([]*models.Execution, error) {
+func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator) []*models.Execution {
 
 	orderPrice := order.Price
 
@@ -118,20 +96,16 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 			break
 		}
 
-		trades, removeOrders, err := ob.matchOrdersInPrice(currentPrice, order)
+		trades, removeOrders := ob.matchOrdersInPrice(currentPrice, order)
 		filledOrders = append(filledOrders, removeOrders...)
 
-		if err != nil {
-			return allTrades, err
-		} else {
-			allTrades = append(allTrades, trades...)
-		}
+		allTrades = append(allTrades, trades...)
 	}
 
-	return allTrades, nil
+	return allTrades
 }
 
-func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*models.Execution, []models.Order, error) {
+func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*models.Execution, []models.Order) {
 
 	filledOrders := make([]models.Order, 1)
 
@@ -162,7 +136,7 @@ func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*
 		e = e.Next()
 	}
 
-	return matchedTrades, filledOrders, nil
+	return matchedTrades, filledOrders
 }
 
 func (ob *OrderBook) ProcessExecutionsToReport(trades []*models.Execution) models.ExecutionReport {

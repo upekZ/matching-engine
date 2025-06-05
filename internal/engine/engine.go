@@ -101,7 +101,7 @@ func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) 
 	select {
 	case trades := <-execChan:
 		executions := book.ProcessExecutionsToReport(trades)
-		if err := e.publishExecutions(ctx, order.Symbol, executions); err != nil {
+		if err := e.publishExecutions(context.Background(), order.Symbol, executions); err != nil {
 		}
 		if err := e.CacheClient.SaveTrades(order.Symbol, trades); err != nil {
 			log.Printf("Error caching execusions: %s", err.Error())

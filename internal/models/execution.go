@@ -10,8 +10,9 @@ type ExecutionReport map[string][]*Execution
 const (
 	ExecuteNew    ActionType = "newRequest"
 	ExecuteTrade  ActionType = "trade"
-	CancelAction  ActionType = "cancel"
+	ExecuteCancel ActionType = "cancel"
 	ExecuteReject ActionType = "reject"
+	ExecuteAccept ActionType = "accept"
 )
 
 type Execution struct {

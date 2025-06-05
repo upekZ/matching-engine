@@ -175,7 +175,23 @@ func (o *Order) ExecuteCancel() *Execution {
 		OID:       o.ID,
 		ClientOID: o.ClientID,
 		Timestamp: time.Now().UnixMilli(),
-		Action:    CancelAction,
+		Action:    ExecuteCancel,
+		Symbol:    o.Symbol,
+		OStatus:   o.Status,
+		OSide:     o.Side,
+	}
+}
+
+func (o *Order) ExecuteAccepted() *Execution {
+	return &Execution{
+		ID:        uuid.New().String(),
+		OPrice:    o.Price,
+		Quantity:  o.Quantity,
+		CumQty:    o.FilledQty,
+		OID:       o.ID,
+		ClientOID: o.ClientID,
+		Timestamp: time.Now().UnixMilli(),
+		Action:    ExecuteAccept,
 		Symbol:    o.Symbol,
 		OStatus:   o.Status,
 		OSide:     o.Side,
