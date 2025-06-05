@@ -11,7 +11,7 @@ import (
 )
 
 type CacheStore interface {
-	SaveTrades(market string, trades []*models.Trade) error
+	SaveTrades(market string, trades []*models.Execution) error
 	PublishOrderResponse(ctx context.Context, market string, data []byte) error
 	SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error
 }
@@ -28,7 +28,7 @@ type Engine struct {
 type orderRequest struct {
 	isNewOrder bool
 	order      *models.Order
-	tradeChan  chan []*models.Trade
+	tradeChan  chan []*models.Execution
 	errorChan  chan error
 }
 
@@ -43,7 +43,7 @@ func New(cacheStore CacheStore) *Engine {
 	}
 }
 
-func (e *Engine) PlaceRequest(orderReq *models.Order) error {
+func (e *Engine) PlaceRequest(orderReq *models.Order) (models.Order, error) {
 
 	/*
 		proposed solution creates market specific channels dynamically if not in existence.
@@ -51,6 +51,16 @@ func (e *Engine) PlaceRequest(orderReq *models.Order) error {
 		if markets aren't to be updated dynamically but to be added outside of placing orders, blocking could be limited only to reading order channels
 	*/
 	newOrder := models.NewOrder(orderReq.ClientID, orderReq.Symbol, orderReq.Side, orderReq.Price, orderReq.Quantity, orderReq.ReqType)
+
+	if _, err := newOrder.IsValidReq(); err != nil {
+		var exec []*models.Execution
+		exec = append(exec, newOrder.ExecuteReject())
+		log.Printf(err.Error())
+		if pubErr := e.processExecutions(e.ctx, exec); pubErr != nil {
+			log.Printf(pubErr.Error())
+		}
+		return *orderReq, err
+	}
 
 	e.mutex.RLock()
 	orderChan, exists := e.orderChannels[newOrder.Symbol]
@@ -65,8 +75,8 @@ func (e *Engine) PlaceRequest(orderReq *models.Order) error {
 		}
 		e.mutex.Unlock()
 	}
-	orderReq = newOrder
-	return e.processRequest(newOrder, orderChan)
+
+	return *orderReq, e.processRequest(newOrder, orderChan)
 }
 
 func (e *Engine) addNewSymbol(symbol string) chan orderRequest {
@@ -82,9 +92,9 @@ func (e *Engine) addNewSymbol(symbol string) chan orderRequest {
 
 func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) error {
 
-	ctx, cancel := context.WithTimeout(e.ctx, 10000000*time.Second)
+	ctx, cancel := context.WithTimeout(e.ctx, 10*time.Second)
 
-	tradeChan := make(chan []*models.Trade, 16)
+	tradeChan := make(chan []*models.Execution, 16)
 	errorChan := make(chan error)
 
 	defer func() {
@@ -136,7 +146,7 @@ func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 	for {
 		select {
 		case req := <-orderChan:
-			var trades []*models.Trade
+			var trades []*models.Execution
 			var err error
 
 			if req.isNewOrder {
@@ -147,7 +157,7 @@ func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 					trades, err = book.AddBuyRequest(req.order)
 				default:
 					log.Printf("Unknown order[%s] side %s", req.order.ClientID, req.order.Side)
-					return
+					continue
 				}
 			} else {
 				trades, err = book.CancelOrder(req.order)
@@ -158,7 +168,7 @@ func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 				continue
 			}
 
-			if err := e.processTradeResponse(context.Background(), trades); err != nil {
+			if err := e.processExecutions(context.Background(), trades); err != nil {
 				log.Printf("Error publishing trade response: %v", err)
 			}
 
@@ -170,7 +180,7 @@ func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 	}
 }
 
-func (e *Engine) processTradeResponse(ctx context.Context, trades []*models.Trade) error {
+func (e *Engine) processExecutions(ctx context.Context, trades []*models.Execution) error {
 
 	execReports := make(models.ExecutionReport, 0)
 	symbol := ""

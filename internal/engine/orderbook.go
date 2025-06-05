@@ -7,11 +7,12 @@ import (
 	"log"
 )
 
-func (ob *OrderBook) addRequest(order *models.Order, returnCmp models.Comparator) ([]*models.Trade, error) {
+func (ob *OrderBook) processRequest(order *models.Order, returnCmp models.Comparator) ([]*models.Execution, error) {
+
 	trades, err := ob.matchOrder(order, returnCmp)
 
 	if err != nil {
-		return nil, err
+		return trades, err
 	}
 
 	if order.ReqType == models.NewLimitOrder && order.Status != models.Filled {
@@ -24,13 +25,13 @@ func (ob *OrderBook) addRequest(order *models.Order, returnCmp models.Comparator
 	return trades, nil
 }
 
-func (ob *OrderBook) AddBuyRequest(order *models.Order) ([]*models.Trade, error) {
-	return ob.addRequest(order, models.Lesser)
+func (ob *OrderBook) AddBuyRequest(order *models.Order) ([]*models.Execution, error) {
+	return ob.processRequest(order, models.Lesser)
 }
 
-func (ob *OrderBook) AddSellRequest(order *models.Order) ([]*models.Trade, error) {
+func (ob *OrderBook) AddSellRequest(order *models.Order) ([]*models.Execution, error) {
 
-	return ob.addRequest(order, models.Greater)
+	return ob.processRequest(order, models.Greater)
 }
 
 func (ob *OrderBook) addToOrderBook(order *models.Order) error {
@@ -51,7 +52,7 @@ func (ob *OrderBook) addToOrderBook(order *models.Order) error {
 	return nil
 }
 
-func (ob *OrderBook) CancelOrder(order *models.Order) ([]*models.Trade, error) {
+func (ob *OrderBook) CancelOrder(order *models.Order) ([]*models.Execution, error) {
 
 	orderID, ok := ob.ClientIDs[order.ClientID]
 	if !ok {
@@ -77,13 +78,13 @@ func (ob *OrderBook) CancelOrder(order *models.Order) ([]*models.Trade, error) {
 	delete(ob.OrderIndex, order.ID)
 	delete(ob.ClientIDs, order.ClientID)
 
-	trades := make([]*models.Trade, 1)
+	trades := make([]*models.Execution, 1)
 	trades = append(trades, order.ExecuteCancel())
 
 	return trades, nil
 }
 
-func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator) ([]*models.Trade, error) {
+func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator) ([]*models.Execution, error) {
 
 	orderPrice := order.Price
 
@@ -91,7 +92,7 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 
 	keys := priceList.Keys()
 
-	allTrades := make([]*models.Trade, 0)
+	allTrades := make([]*models.Execution, 0)
 
 	for _, key := range keys {
 
@@ -110,7 +111,7 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 	return allTrades, nil
 }
 
-func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*models.Trade, error) {
+func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*models.Execution, error) {
 
 	ordersByPrice, _ := ob.getContainers(order.GetOppositeOrderType())
 
@@ -118,7 +119,7 @@ func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*
 
 	e := priceInfo.Front()
 
-	matchedTrades := make([]*models.Trade, 0)
+	matchedTrades := make([]*models.Execution, 0)
 
 	for e != nil && order.Status != models.Filled {
 

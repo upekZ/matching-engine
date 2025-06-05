@@ -36,7 +36,7 @@ func (c *Client) SaveOrderBook(market string, obj Serializable, keyPrefix string
 	return c.client.Set(context.Background(), key, data, 0).Err()
 }
 
-func (c *Client) SaveTrades(market string, trades []*models.Trade) error {
+func (c *Client) SaveTrades(market string, trades []*models.Execution) error {
 
 	var allTrades [][]byte
 

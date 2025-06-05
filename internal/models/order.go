@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/google/uuid"
 	"time"
 )
@@ -20,6 +21,7 @@ const (
 	PartiallyFilled OrderStatus = "partiallyFilled"
 	Filled          OrderStatus = "filled"
 	Cancelled       OrderStatus = "cancelled"
+	Rejected        OrderStatus = "rejected"
 )
 
 const (
@@ -75,7 +77,69 @@ func (o *Order) GetOppositeOrderType() OrderSide {
 	}
 }
 
-func (o *Order) ExecuteTrade(qty int, price float64) *Trade {
+func (o *Order) IsValidReq() (bool, error) {
+
+	var errorString string
+	isValid := true
+
+	if o.Price <= 0 {
+		isValid = false
+		errorString += "invalid price entry\t"
+	}
+
+	if o.Quantity <= 0 {
+		isValid = false
+		errorString += "invalid quantity entry\t"
+	}
+
+	//++Matching level validations
+
+	if isValid {
+		return isValid, nil
+	} else {
+		return isValid, fmt.Errorf(errorString)
+	}
+}
+
+func (o *Order) ExecuteNew() *Execution {
+
+	return &Execution{
+		ID:         uuid.New().String(),
+		OrderPrice: o.Price,
+		TradePrice: 0,
+		Quantity:   0,
+		CumQty:     o.FilledQty,
+		OrderID:    o.ID,
+		ClientOID:  o.ClientID,
+		Timestamp:  time.Now().UnixMilli(),
+		Action:     ExecuteNew,
+		Symbol:     o.Symbol,
+		Status:     o.Status,
+		OrderSide:  o.Side,
+	}
+}
+
+func (o *Order) ExecuteReject() *Execution {
+
+	o.Status = Rejected
+
+	return &Execution{
+		ID:         uuid.New().String(),
+		OrderPrice: o.Price,
+		TradePrice: 0,
+		Quantity:   0,
+		CumQty:     o.FilledQty,
+		OrderID:    o.ID,
+		ClientOID:  o.ClientID,
+		Timestamp:  time.Now().UnixMilli(),
+		Action:     ExecuteReject,
+		Symbol:     o.Symbol,
+		Status:     o.Status,
+		OrderSide:  o.Side,
+	}
+}
+
+func (o *Order) ExecuteTrade(qty int, price float64) *Execution {
 	o.FilledQty += qty
 	o.AvailableQty -= qty
 
@@ -85,27 +149,29 @@ func (o *Order) ExecuteTrade(qty int, price float64) *Trade {
 		o.Status = Filled
 	}
 
-	return &Trade{
+	return &Execution{
 		ID:         uuid.New().String(),
 		OrderPrice: o.Price,
 		TradePrice: price,
 		Quantity:   qty,
+		CumQty:     o.FilledQty,
 		OrderID:    o.ID,
 		ClientOID:  o.ClientID,
 		Timestamp:  time.Now().UnixMilli(),
-		Action:     TradeAction,
+		Action:     ExecuteTrade,
 		Symbol:     o.Symbol,
 		Status:     o.Status,
 		OrderSide:  o.Side,
 	}
 }
 
-func (o *Order) ExecuteCancel() *Trade {
+func (o *Order) ExecuteCancel() *Execution {
 	o.Status = Cancelled
-	return &Trade{
+	return &Execution{
 		ID:         uuid.New().String(),
 		OrderPrice: o.Price,
 		Quantity:   o.Quantity,
+		CumQty:     o.FilledQty,
 		OrderID:    o.ID,
 		ClientOID:  o.ClientID,
 		Timestamp:  time.Now().UnixMilli(),

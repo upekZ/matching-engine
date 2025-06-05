@@ -8,7 +8,7 @@ import (
 )
 
 type OrderService interface {
-	PlaceRequest(order *models.Order) error
+	PlaceRequest(order *models.Order) (models.Order, error)
 }
 
 type Channel interface {
@@ -24,7 +24,7 @@ func (app *Server) OrderRequest(writer http.ResponseWriter, req *http.Request) {
 		http.Error(writer, "order request failure", http.StatusInternalServerError)
 		return
 	}
-	err := app.service.PlaceRequest(&order)
+	orderResp, err := app.service.PlaceRequest(&order)
 
 	if err != nil {
 		log.Printf("Error placing order: %v", err)
@@ -32,7 +32,7 @@ func (app *Server) OrderRequest(writer http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := WriteJSON(writer, http.StatusCreated, order); err != nil {
+	if err := WriteJSON(writer, http.StatusCreated, orderResp); err != nil {
 		log.Printf("Error writing response: %v", err)
 		http.Error(writer, "order request failure", http.StatusInternalServerError)
 	}

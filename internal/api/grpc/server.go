@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"fmt"
 	"github.com/upekZ/matching-engine/internal/models"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -11,7 +12,7 @@ import (
 )
 
 type GlobalEngine interface {
-	PlaceRequest(order *models.Order) error
+	PlaceRequest(order *models.Order) (models.Order, error)
 	PublishOrderResponse(ctx context.Context, market string, data []byte) error
 	SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error
 }
@@ -31,7 +32,7 @@ func (s *OrderServiceHandler) PlaceNewOrder(ctx context.Context, req *OrderReque
 	}
 
 	order := models.NewOrder(req.ClientId, req.Symbol, models.OrderSide(req.Side), float64(req.Price), int(req.Quantity), models.OrderType(req.Type))
-	err := s.engine.PlaceRequest(order)
+	_, err := s.engine.PlaceRequest(order)
 
 	resp := &OrderResponse{
 		OrderId: order.ClientID,
@@ -100,14 +101,15 @@ func (s *OrderServiceHandler) SubscribeOrderUpdates(req *MarketRequest, stream O
 
 func ConvertToProtoExecReport(input models.ExecutionReport) *ExecReport {
 	execReport := &ExecReport{
-		ExecReport: make(map[string]*TradeList),
+		ExecReport: make(map[string]*TradeList, len(input)),
 	}
 
 	for key, trades := range input {
 		tradeList := &TradeList{
-			Trade: make([]*Trade, len(trades)),
+			Trade: make([]*Trade, 1, len(input[key])),
 		}
 		for _, trade := range trades {
+			fmt.Printf("iterating over trades: %s\n", key)
 			protoTrade := &Trade{
 				Id:          trade.ID,
 				Status:      string(trade.Status),

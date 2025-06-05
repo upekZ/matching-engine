@@ -5,15 +5,18 @@ import (
 )
 
 type ActionType string
-type ExecutionReport map[string][]*Trade
+type ExecutionReport map[string][]*Execution
 
 const (
-	TradeAction  ActionType = "trade"
-	CancelAction ActionType = "cancel"
+	ExecuteNew    ActionType = "NewOrder"
+	ExecuteTrade  ActionType = "trade"
+	CancelAction  ActionType = "cancel"
+	ExecuteReject ActionType = "reject"
 )
 
-type Trade struct {
+type Execution struct {
 	ID         string      `json:"id"`
+	Action     ActionType  `json:"action"`
 	Status     OrderStatus `json:"status"`
 	Symbol     string      `json:"symbol"`
 	OrderPrice float64     `json:"orderprice"`
@@ -22,17 +25,16 @@ type Trade struct {
 	CumQty     int         `json:"cumQty"`
 	OrderID    string      `json:"order_id"`
 	ClientOID  string      `json:"client_oid"`
-	Action     ActionType  `json:"action"`
 	OrderSide  OrderSide   `json:"order_side"`
 	Timestamp  int64       `json:"timestamp"`
 }
 
-func (t *Trade) ToJSON() ([]byte, error) {
+func (t *Execution) ToJSON() ([]byte, error) {
 	return json.Marshal(t)
 }
 
-func TradeFromJSON(data []byte) (*Trade, error) {
-	var trade Trade
-	err := json.Unmarshal(data, &trade)
-	return &trade, err
+func TradeFromJSON(data []byte) (*Execution, error) {
+	var exec Execution
+	err := json.Unmarshal(data, &exec)
+	return &exec, err
 }

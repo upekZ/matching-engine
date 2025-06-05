@@ -3,7 +3,7 @@
 A Matching engine for trading systems, built with Go. It supports order placement via REST APIs and real-time trade updates via gRPC streaming for internal gateways.
 
 ## Features
-- **REST API**: Place buy/sell orders (`POST /orders, DELETE /orders`).
+- **REST API**: Place buy/sell orders (`POST /orders` - specified by order fields).
 - **gRPC Streaming**: Subscribe to trade updates for specific markets (`SubscribeOrderUpdates`).
 - **High-Level Architecture**:
     - **Presentation**: REST (`internal/api/rest`) and gRPC (`internal/api/grpc`).
@@ -76,7 +76,7 @@ A Matching engine for trading systems, built with Go. It supports order placemen
     - REST response: created order with updated id and timestamp
     - Response to grpc subscribers: `{"order_id":"...", "status":"open", "trades":[]}`
 
-### Subscribe to Trade Updates (gRPC)
+### Subscribe to Execution Updates (gRPC)
 - **RPC**: `SubscribeOrderUpdates`
 - **Steps**:
     1. Use Postman (version ≥9.0):
