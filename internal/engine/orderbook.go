@@ -19,7 +19,7 @@ func (ob *OrderBook) processRequest(order *models.Order, returnCmp models.Compar
 	executions = append(executions, ob.matchOrder(order, returnCmp)...)
 
 	if order.ReqType == models.NewLimitOrder && order.Status != models.Filled {
-		executions = append(executions, ob.matchOrder(order, returnCmp)...)
+		executions = append(executions, ob.addToOrderBook(order))
 	}
 	return executions, nil
 }
@@ -73,10 +73,7 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 
 	_, priceList := ob.getContainers(order.GetOppositeOrderType())
 
-	keys := priceList.Keys()
-
 	allTrades := make([]*models.Execution, 0, 2)
-
 	filledOrders := make([]models.Order, 0, 1)
 
 	defer func() {
@@ -88,8 +85,8 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 		}
 	}()
 
+	keys := priceList.Keys()
 	for _, key := range keys {
-
 		currentPrice := key.(float64)
 
 		if !returnCmp(currentPrice, orderPrice) || order.Status == models.Filled {

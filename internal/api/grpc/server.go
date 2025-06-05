@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"context"
-	"fmt"
 	"github.com/upekZ/matching-engine/internal/models"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -104,7 +103,6 @@ func ConvertToProtoExecReport(input models.ExecutionReport) *ExecReport {
 			Trade: make([]*Trade, 0, len(input[key])),
 		}
 		for _, trade := range trades {
-			fmt.Printf("iterating over trades: %s\n", key)
 			protoTrade := &Trade{
 				Id:          trade.ID,
 				Status:      string(trade.OStatus),

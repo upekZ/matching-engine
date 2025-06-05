@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/redis/go-redis/v9"
 	"github.com/upekZ/matching-engine/internal/models"
 	"google.golang.org/grpc/codes"
@@ -62,7 +61,6 @@ func (c *Client) SaveTrades(market string, trades []*models.Execution) error {
 }
 
 func (c *Client) PublishOrderResponse(ctx context.Context, market string, data []byte) error {
-	fmt.Printf("PublishOrderResponse: %s\n", data)
 	if err := c.client.Publish(ctx, "order_responses:"+market, data).Err(); err != nil {
 		return err
 	}
