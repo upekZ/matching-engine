@@ -45,7 +45,7 @@ func (c *Client) SaveTrades(market string, trades []*models.Execution) error {
 			return err
 		}
 
-		if err := c.client.Set(context.Background(), "trade:"+trade.ID, data, 0).Err(); err != nil {
+		if err := c.client.Set(context.Background(), "trade:"+trade.ExecID, data, 0).Err(); err != nil {
 			return err
 		}
 		allTrades = append(allTrades, data)
