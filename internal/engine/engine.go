@@ -51,17 +51,23 @@ func (e *Engine) PlaceRequest(orderReq *models.Order) (models.Order, error) {
 		if markets aren't to be updated dynamically but to be added outside of placing orders, blocking could be limited only to reading order channels
 	*/
 
-	var err error
 	newOrder := models.NewOrder(orderReq.ClientID, orderReq.Symbol, orderReq.Side, orderReq.Price, orderReq.Quantity, orderReq.ReqType)
 
+	var err error
+	exec := make([]*models.Execution, 0, 1)
+
+	defer func() {
+		if processErr := e.processExecutions(e.ctx, exec); processErr != nil {
+			log.Printf("failure in execution repoting: %s", processErr.Error())
+		}
+	}()
+
 	if _, err = newOrder.IsValidReq(); err != nil {
-		var exec []*models.Execution
 		exec = append(exec, newOrder.ExecuteReject())
 		log.Printf(err.Error())
-		if pubErr := e.processExecutions(e.ctx, exec); pubErr != nil {
-			log.Printf(pubErr.Error())
-		}
 		return *orderReq, err
+	} else {
+		exec = append(exec, newOrder.ExecuteNew())
 	}
 
 	e.mutex.Lock()
@@ -73,7 +79,6 @@ func (e *Engine) PlaceRequest(orderReq *models.Order) (models.Order, error) {
 	e.mutex.Unlock()
 
 	go e.processRequest(newOrder, orderChan)
-
 	return *orderReq, err
 }
 
