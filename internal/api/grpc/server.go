@@ -12,7 +12,7 @@ import (
 )
 
 type GlobalEngine interface {
-	PlaceRequest(order *models.Order) (models.Order, error)
+	PlaceRequest(order *models.Order) models.Order
 	PublishOrderResponse(ctx context.Context, market string, data []byte) error
 	SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error
 }
@@ -32,17 +32,13 @@ func (s *OrderServiceHandler) PlaceNewOrder(ctx context.Context, req *OrderReque
 	}
 
 	order := models.NewOrder(req.ClientId, req.Symbol, models.OrderSide(req.Side), float64(req.Price), int(req.Quantity), models.OrderType(req.Type))
-	_, err := s.engine.PlaceRequest(order)
+	s.engine.PlaceRequest(order) //ToDo handle output types
 
 	resp := &OrderResponse{
 		OrderId: order.ClientID,
 		Status:  OrderResponse_PENDING,
 	}
-
-	if err != nil {
-		resp.Status = OrderResponse_FAILED
-		return resp, err
-	}
+	//ToDo handle errors
 	resp.Status = OrderResponse_CONFIRMED
 	return resp, nil
 }
@@ -112,17 +108,17 @@ func ConvertToProtoExecReport(input models.ExecutionReport) *ExecReport {
 			fmt.Printf("iterating over trades: %s\n", key)
 			protoTrade := &Trade{
 				Id:          trade.ID,
-				Status:      string(trade.Status),
+				Status:      string(trade.OStatus),
 				Symbol:      trade.Symbol,
 				Price:       float32(trade.TradePrice),
-				OrderPrice:  float32(trade.OrderPrice),
+				OrderPrice:  float32(trade.OPrice),
 				Quantity:    int32(trade.Quantity),
 				CumQuantity: int32(trade.CumQty),
 				ClientId:    trade.ClientOID,
 				Action:      string(trade.Action),
-				Side:        string(trade.OrderSide),
+				Side:        string(trade.OSide),
 				Timestamp:   trade.Timestamp,
-				OrderId:     trade.OrderID,
+				OrderId:     trade.OID,
 			}
 			tradeList.Trade = append(tradeList.Trade, protoTrade)
 		}

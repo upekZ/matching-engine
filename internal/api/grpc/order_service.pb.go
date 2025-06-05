@@ -575,7 +575,7 @@ func file_order_service_proto_rawDescGZIP() []byte {
 var file_order_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_order_service_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_order_service_proto_goTypes = []interface{}{
-	(OrderResponse_OrderStatus)(0), // 0: grpc.OrderResponse.OrderStatus
+	(OrderResponse_OrderStatus)(0), // 0: grpc.OrderResponse.OStatus
 	(*OrderRequest)(nil),           // 1: grpc.OrderRequest
 	(*OrderResponse)(nil),          // 2: grpc.OrderResponse
 	(*MarketRequest)(nil),          // 3: grpc.MarketRequest
@@ -585,7 +585,7 @@ var file_order_service_proto_goTypes = []interface{}{
 	nil,                            // 7: grpc.ExecReport.ExecReportEntry
 }
 var file_order_service_proto_depIdxs = []int32{
-	0, // 0: grpc.OrderResponse.status:type_name -> grpc.OrderResponse.OrderStatus
+	0, // 0: grpc.OrderResponse.status:type_name -> grpc.OrderResponse.OStatus
 	7, // 1: grpc.ExecReport.exec_report:type_name -> grpc.ExecReport.ExecReportEntry
 	5, // 2: grpc.TradeList.trade:type_name -> grpc.Trade
 	6, // 3: grpc.ExecReport.ExecReportEntry.value:type_name -> grpc.TradeList

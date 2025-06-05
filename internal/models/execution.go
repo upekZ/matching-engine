@@ -8,7 +8,7 @@ type ActionType string
 type ExecutionReport map[string][]*Execution
 
 const (
-	ExecuteNew    ActionType = "NewOrder"
+	ExecuteNew    ActionType = "newRequest"
 	ExecuteTrade  ActionType = "trade"
 	CancelAction  ActionType = "cancel"
 	ExecuteReject ActionType = "reject"
@@ -17,15 +17,15 @@ const (
 type Execution struct {
 	ID         string      `json:"id"`
 	Action     ActionType  `json:"action"`
-	Status     OrderStatus `json:"status"`
+	OStatus    OrderStatus `json:"status"`
 	Symbol     string      `json:"symbol"`
-	OrderPrice float64     `json:"orderprice"`
+	OPrice     float64     `json:"oprice"`
 	TradePrice float64     `json:"tradeprice"`
 	Quantity   int         `json:"quantity"`
 	CumQty     int         `json:"cumQty"`
-	OrderID    string      `json:"order_id"`
+	OID        string      `json:"oid"`
 	ClientOID  string      `json:"client_oid"`
-	OrderSide  OrderSide   `json:"order_side"`
+	OSide      OrderSide   `json:"o_side"`
 	Timestamp  int64       `json:"timestamp"`
 }
 

@@ -9,7 +9,7 @@ A Matching engine for trading systems, built with Go. It supports order placemen
     - **Presentation**: REST (`internal/api/rest`) and gRPC (`internal/api/grpc`).
     - **Business Logic**: Matching engine (`internal/engine`) with channel-based order books.
     - **Data**: Redis (`internal/storage/redis`) for persistence and Pub/Sub.
-- **Redis Integration**: Stores trades and facilitates Pub/Sub for trade updates.
+- **Redis Integration**: Stores executions and facilitates Pub/Sub for trade updates.
 
 ## Prerequisites
 - **Go**: Version 1.22 or later.
@@ -74,7 +74,7 @@ A Matching engine for trading systems, built with Go. It supports order placemen
   }'
   ```
     - REST response: created order with updated id and timestamp
-    - Response to grpc subscribers: `{"order_id":"...", "status":"open", "trades":[]}`
+    - Response to grpc subscribers: `{"order_id":"...", "status":"open", "executions":[]}`
 
 ### Subscribe to Execution Updates (gRPC)
 - **RPC**: `SubscribeOrderUpdates`
@@ -94,7 +94,7 @@ A Matching engine for trading systems, built with Go. It supports order placemen
         - Click “Invoke” to start streaming.
     2. Place orders via REST to trigger updates (see above).
     3. Observe streamed `OrderResponse` messages in Postman:
-        - Example: `{"order_id":"...", "trades":[{"id":"...", "symbol":"BTC-USD", ...}]}`
+        - Example: `{"order_id":"...", "executions":[{"id":"...", "symbol":"BTC-USD", ...}]}`
 
 ## Architecture
 - **Presentation Layer**:
@@ -104,13 +104,13 @@ A Matching engine for trading systems, built with Go. It supports order placemen
     - Engine (`internal/engine`): Processes orders using channels per symbol.
     - Processes multiple price levels concurrently
 - **Data Layer**:
-    - Redis (`internal/storage/redis`): Stores trades (`trade:<id>`) and facilitates Pub/Sub (`order_responses:<symbol>`).
+    - Redis (`internal/storage/redis`): Stores executions (`trade:<id>`) and facilitates Pub/Sub (`order_responses:<symbol>`).
 - **Type Safety**:
     - Uses `models.OrderResponse` in `internal/models` to avoid gRPC dependencies in business logic.
     - gRPC types are isolated to the presentation layer.
 
 ## Future Improvements
-- Modifications to orderBook are made when trades are executed. This will be updated to use copies of orders and then to alter orderbook once all trades are completed.
+- Modifications to orderBook are made when executions are executed. This will be updated to use copies of orders and then to alter orderbook once all executions are completed.
 - Engine is only developed for LimitOrders. No Order types considered so far. to expand to other types of orders
 - Current implementation expects to cancel->New when order needs to be modified. This needs to be expanded to Cancel and New if priority is impacted only and modify if no impact for priority --> Add Modify Order
 - At the moment cancel order is defined to require an Order Type. This needs to be modified with ability to cancel by client ID

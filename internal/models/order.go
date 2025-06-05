@@ -105,17 +105,17 @@ func (o *Order) ExecuteNew() *Execution {
 
 	return &Execution{
 		ID:         uuid.New().String(),
-		OrderPrice: o.Price,
+		OPrice:     o.Price,
 		TradePrice: 0,
 		Quantity:   0,
 		CumQty:     o.FilledQty,
-		OrderID:    o.ID,
+		OID:        o.ID,
 		ClientOID:  o.ClientID,
 		Timestamp:  time.Now().UnixMilli(),
 		Action:     ExecuteNew,
 		Symbol:     o.Symbol,
-		Status:     o.Status,
-		OrderSide:  o.Side,
+		OStatus:    o.Status,
+		OSide:      o.Side,
 	}
 }
 
@@ -125,17 +125,17 @@ func (o *Order) ExecuteReject() *Execution {
 
 	return &Execution{
 		ID:         uuid.New().String(),
-		OrderPrice: o.Price,
+		OPrice:     o.Price,
 		TradePrice: 0,
 		Quantity:   0,
 		CumQty:     o.FilledQty,
-		OrderID:    o.ID,
+		OID:        o.ID,
 		ClientOID:  o.ClientID,
 		Timestamp:  time.Now().UnixMilli(),
 		Action:     ExecuteReject,
 		Symbol:     o.Symbol,
-		Status:     o.Status,
-		OrderSide:  o.Side,
+		OStatus:    o.Status,
+		OSide:      o.Side,
 	}
 }
 
@@ -151,33 +151,33 @@ func (o *Order) ExecuteTrade(qty int, price float64) *Execution {
 
 	return &Execution{
 		ID:         uuid.New().String(),
-		OrderPrice: o.Price,
+		OPrice:     o.Price,
 		TradePrice: price,
 		Quantity:   qty,
 		CumQty:     o.FilledQty,
-		OrderID:    o.ID,
+		OID:        o.ID,
 		ClientOID:  o.ClientID,
 		Timestamp:  time.Now().UnixMilli(),
 		Action:     ExecuteTrade,
 		Symbol:     o.Symbol,
-		Status:     o.Status,
-		OrderSide:  o.Side,
+		OStatus:    o.Status,
+		OSide:      o.Side,
 	}
 }
 
 func (o *Order) ExecuteCancel() *Execution {
 	o.Status = Cancelled
 	return &Execution{
-		ID:         uuid.New().String(),
-		OrderPrice: o.Price,
-		Quantity:   o.Quantity,
-		CumQty:     o.FilledQty,
-		OrderID:    o.ID,
-		ClientOID:  o.ClientID,
-		Timestamp:  time.Now().UnixMilli(),
-		Action:     CancelAction,
-		Symbol:     o.Symbol,
-		Status:     o.Status,
-		OrderSide:  o.Side,
+		ID:        uuid.New().String(),
+		OPrice:    o.Price,
+		Quantity:  o.Quantity,
+		CumQty:    o.FilledQty,
+		OID:       o.ID,
+		ClientOID: o.ClientID,
+		Timestamp: time.Now().UnixMilli(),
+		Action:    CancelAction,
+		Symbol:    o.Symbol,
+		OStatus:   o.Status,
+		OSide:     o.Side,
 	}
 }

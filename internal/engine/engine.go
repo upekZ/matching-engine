@@ -28,8 +28,7 @@ type Engine struct {
 type orderRequest struct {
 	isNewOrder bool
 	order      *models.Order
-	tradeChan  chan []*models.Execution
-	errorChan  chan error
+	execChan   chan []*models.Execution
 }
 
 func New(cacheStore CacheStore) *Engine {
@@ -43,7 +42,7 @@ func New(cacheStore CacheStore) *Engine {
 	}
 }
 
-func (e *Engine) PlaceRequest(orderReq *models.Order) (models.Order, error) {
+func (e *Engine) PlaceRequest(orderReq *models.Order) models.Order {
 
 	/*
 		proposed solution creates market specific channels dynamically if not in existence.
@@ -52,23 +51,6 @@ func (e *Engine) PlaceRequest(orderReq *models.Order) (models.Order, error) {
 	*/
 
 	newOrder := models.NewOrder(orderReq.ClientID, orderReq.Symbol, orderReq.Side, orderReq.Price, orderReq.Quantity, orderReq.ReqType)
-
-	var err error
-	exec := make([]*models.Execution, 0, 1)
-
-	defer func() {
-		if processErr := e.processExecutions(e.ctx, exec); processErr != nil {
-			log.Printf("failure in execution repoting: %s", processErr.Error())
-		}
-	}()
-
-	if _, err = newOrder.IsValidReq(); err != nil {
-		exec = append(exec, newOrder.ExecuteReject())
-		log.Printf(err.Error())
-		return *orderReq, err
-	} else {
-		exec = append(exec, newOrder.ExecuteNew())
-	}
 
 	e.mutex.Lock()
 	orderChan, exists := e.orderChannels[newOrder.Symbol]
@@ -79,7 +61,7 @@ func (e *Engine) PlaceRequest(orderReq *models.Order) (models.Order, error) {
 	e.mutex.Unlock()
 
 	go e.processRequest(newOrder, orderChan)
-	return *orderReq, err
+	return *orderReq
 }
 
 func (e *Engine) addNewSymbol(symbol string) chan orderRequest {
@@ -97,12 +79,11 @@ func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) 
 
 	ctx, cancel := context.WithTimeout(e.ctx, 10*time.Second)
 
-	tradeChan := make(chan []*models.Execution, 16)
-	errorChan := make(chan error)
+	book, _ := e.orderBooks[order.Symbol]
+	execChan := make(chan []*models.Execution)
 
 	defer func() {
-		close(tradeChan)
-		close(errorChan)
+		close(execChan)
 		cancel()
 	}()
 
@@ -114,24 +95,21 @@ func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) 
 	channel <- orderRequest{
 		isNewOrder: isNew,
 		order:      order,
-		tradeChan:  tradeChan,
-		errorChan:  errorChan,
+		execChan:   execChan,
 	}
 
 	select {
-	case trades := <-tradeChan:
-		//ToDo save order-book to redis
-		//book, _ := e.orderBooks[order.Symbol]
-		//if err := e.CacheClient.SaveOrderBook(order.Symbol, book); err != nil {
-		//	return nil, err
-		//}
-		//log.Printf("book name %s", book.market)
-
+	case trades := <-execChan:
+		executions := book.ProcessExecutionsToReport(trades)
+		if err := e.publishExecutions(ctx, order.Symbol, executions); err != nil {
+		}
 		if err := e.CacheClient.SaveTrades(order.Symbol, trades); err != nil {
 			log.Printf("Error caching execusions: %s", err.Error())
 		}
-	case err := <-errorChan:
-		log.Printf("Error processing trades: %s", err.Error())
+		//ToDo save order-book to redis
+		//if err := e.CacheClient.SaveOrderBook(order.Symbol, book); err != nil {
+		//	log.Printf("error caching order-book")
+		//}
 	case <-ctx.Done():
 		log.Printf("order request failed - timeout: %s", ctx.Err())
 	}
@@ -141,33 +119,29 @@ func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 	for {
 		select {
 		case req := <-orderChan:
-			var trades []*models.Execution
+			var executions []*models.Execution
 			var err error
 
 			if req.isNewOrder {
 				switch req.order.Side {
 				case models.SellOrder:
-					trades, err = book.AddSellRequest(req.order)
+					executions, err = book.AddSellRequest(req.order)
 				case models.BuyOrder:
-					trades, err = book.AddBuyRequest(req.order)
+					executions, err = book.AddBuyRequest(req.order)
 				default:
 					log.Printf("Unknown order[%s] side %s", req.order.ClientID, req.order.Side)
 					continue
 				}
 			} else {
-				trades, err = book.CancelOrder(req.order)
+				executions, err = book.CancelOrder(req.order)
 			}
 
-			if err != nil {
-				req.errorChan <- err
+			req.execChan <- executions //executions cannot be 0 since there would at least be new request
+
+			if err != nil { //pushing to error channel is redundant
+				log.Printf("Error processing order[%s]: %s", req.order.ClientID, err.Error())
 				continue
 			}
-
-			if err := e.processExecutions(context.Background(), trades); err != nil {
-				log.Printf("Error publishing trade response: %v", err)
-			}
-
-			req.tradeChan <- trades
 
 		case <-e.ctx.Done():
 			return
@@ -175,30 +149,9 @@ func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 	}
 }
 
-func (e *Engine) processExecutions(ctx context.Context, trades []*models.Execution) error {
+func (e *Engine) publishExecutions(ctx context.Context, symbol string, execReport models.ExecutionReport) error {
 
-	execReports := make(models.ExecutionReport, 0)
-	symbol := ""
-
-	for _, t := range trades {
-		symbol = t.Symbol
-
-		var currentOrder *models.Order
-		if element := e.orderBooks[t.Symbol].OrderIndex[t.OrderID]; element != nil {
-			currentOrder = element.Value()
-		}
-
-		if currentOrder != nil && t.Status == models.Filled {
-			if e.orderBooks[t.Symbol].OrderIndex[currentOrder.ID] != nil {
-				if err := e.orderBooks[t.Symbol].removeOrder(currentOrder); err != nil {
-					return err
-				}
-			}
-		}
-		execReports[t.ClientOID] = append(execReports[t.ClientOID], t)
-	}
-
-	data, err := json.Marshal(execReports)
+	data, err := json.Marshal(execReport)
 	if err != nil {
 		log.Printf("Error marshalling response: %v", err)
 		return fmt.Errorf("failed to publish execution reports")
