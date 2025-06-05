@@ -4,30 +4,33 @@ import (
 	"encoding/json"
 )
 
-type ActionType string
+type ExecType string
 type ExecutionReport map[string][]*Execution
 
 const (
-	ExecuteNew    ActionType = "new"
-	ExecuteTrade  ActionType = "trade"
-	ExecuteCancel ActionType = "canceled"
-	ExecuteReject ActionType = "rejected"
-	ExecuteAccept ActionType = "accept"
+	ExecuteNew    ExecType = "new"
+	ExecuteTrade  ExecType = "trade"
+	ExecuteCancel ExecType = "canceled"
+	ExecuteReject ExecType = "rejected"
+	ExecuteAccept ExecType = "accept"
 )
 
 type Execution struct {
-	ID         string      `json:"id"`
-	Action     ActionType  `json:"action"`
-	OStatus    OrderStatus `json:"status"`
-	Symbol     string      `json:"symbol"`
-	OPrice     float64     `json:"oprice"`
-	TradePrice float64     `json:"tradeprice"`
-	Quantity   int         `json:"quantity"`
-	CumQty     int         `json:"cumQty"`
-	OID        string      `json:"oid"`
-	ClientOID  string      `json:"client_oid"`
-	OSide      OrderSide   `json:"o_side"`
-	Timestamp  int64       `json:"timestamp"`
+	ExecType     ExecType    `json:"exec_type"`
+	OrdStatus    OrderStatus `json:"ord_status"`
+	ClOrdID      string      `json:"cl_ord_id"`
+	OrderID      string      `json:"orderid"`
+	Symbol       string      `json:"symbol"`
+	Side         OrderSide   `json:"side"`
+	OrderQty     int         `json:"orderqty"`
+	Price        float64     `json:"price"`
+	LastQty      int         `json:"lastqty"`
+	LastPx       float64     `json:"lastpx"`
+	CumQty       int         `json:"cumQty"`
+	LeavesQty    int         `json:"leavesQty"`
+	ExecID       string      `json:"exec_id"`
+	TransactTime int64       `json:"transacttime"`
+	OrdType      OrderType   `json:"ord_type"`
 }
 
 func (t *Execution) ToJSON() ([]byte, error) {

@@ -95,27 +95,30 @@ func (s *OrderServiceHandler) SubscribeOrderUpdates(req *MarketRequest, stream O
 
 func ConvertToProtoExecReport(input models.ExecutionReport) *ExecReport {
 	execReport := &ExecReport{
-		ExecReport: make(map[string]*TradeList, len(input)),
+		ExecReport: make(map[string]*ExecutionList, len(input)),
 	}
 
-	for key, trades := range input {
-		tradeList := &TradeList{
-			Trade: make([]*Trade, 0, len(input[key])),
+	for key, execution := range input {
+		tradeList := &ExecutionList{
+			Trade: make([]*Execution, 0, len(input[key])),
 		}
-		for _, trade := range trades {
-			protoTrade := &Trade{
-				Id:          trade.ID,
-				Status:      string(trade.OStatus),
-				Symbol:      trade.Symbol,
-				Price:       float32(trade.TradePrice),
-				OrderPrice:  float32(trade.OPrice),
-				Quantity:    int32(trade.Quantity),
-				CumQuantity: int32(trade.CumQty),
-				ClientId:    trade.ClientOID,
-				Action:      string(trade.Action),
-				Side:        string(trade.OSide),
-				Timestamp:   trade.Timestamp,
-				OrderId:     trade.OID,
+		for _, trade := range execution {
+			protoTrade := &Execution{
+				ExecutionType:      string(trade.ExecType),
+				OrderStatus:        string(trade.OrdStatus),
+				ClientOrderId:      trade.ClOrdID,
+				OrderId:            trade.OrderID,
+				Symbol:             trade.Symbol,
+				Side:               string(trade.Side),
+				OrderQuantity:      int32(trade.OrderQty),
+				Price:              float32(trade.Price),
+				LastQuantity:       int32(trade.LastQty),
+				LastPx:             float32(trade.LastPx),
+				CumulativeQuantity: int32(trade.CumQty),
+				LeavesQuantity:     int32(trade.LeavesQty),
+				ExecutionId:        trade.ExecID,
+				TransactTime:       trade.TransactTime,
+				OrderType:          string(trade.OrdType),
 			}
 			tradeList.Trade = append(tradeList.Trade, protoTrade)
 		}

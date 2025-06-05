@@ -33,24 +33,27 @@ message MarketRequest {
 }
 
 message ExecReport {
-  map<string, TradeList> exec_report = 1;
+  map<string, ExecutionList> exec_report = 1;
 }
 
-message Trade {
-  string id = 1;
-  string status = 2;
-  string symbol = 3;
-  float price = 4;
-  float order_price = 5;
-  int32 quantity = 6;
-  int32 cum_quantity = 7;
-  string client_id = 8;
-  string action = 9;
-  string side = 10;
-  int64 timestamp = 11;
-  string order_id = 12;
+message Execution {
+  string execution_type = 1;
+  string order_status = 2;
+  string client_order_id = 3;
+  string order_id = 4;
+  string symbol = 5;
+  string side = 6;
+  int32 order_quantity = 7;
+  float price = 8;
+  int32 last_quantity = 9;
+  float last_px = 10;
+  int32 cumulative_quantity = 11;
+  int32 leaves_quantity = 12;
+  string execution_id = 13;
+  int64 transact_time = 14;
+  string order_type = 15;
 }
 
-message TradeList {
-  repeated Trade trade = 1;
+message ExecutionList {
+  repeated Execution trade = 1;
 }

@@ -147,7 +147,7 @@ func (ob *OrderBook) ProcessExecutionsToReport(trades []*models.Execution) model
 	execReports := make(models.ExecutionReport, 2)
 
 	for _, t := range trades {
-		execReports[t.ClientOID] = append(execReports[t.ClientOID], t)
+		execReports[t.ClOrdID] = append(execReports[t.ClOrdID], t)
 	}
 
 	return execReports

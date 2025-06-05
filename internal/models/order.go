@@ -117,19 +117,24 @@ func (o *Order) ValidateReq() error {
 
 func (o *Order) ExecuteNew() *Execution {
 
+	o.Status = NewOrderState
+
 	return &Execution{
-		ID:         uuid.New().String(),
-		OPrice:     o.Price,
-		TradePrice: 0,
-		Quantity:   o.Quantity,
-		CumQty:     o.FilledQty,
-		OID:        o.ID,
-		ClientOID:  o.ClientID,
-		Timestamp:  time.Now().UnixMilli(),
-		Action:     ExecuteNew,
-		Symbol:     o.Symbol,
-		OStatus:    o.Status,
-		OSide:      o.Side,
+		ExecType:     ExecuteNew,
+		OrdStatus:    o.Status,
+		ClOrdID:      o.ClientID,
+		OrderID:      o.ID,
+		Symbol:       o.Symbol,
+		Side:         o.Side,
+		OrderQty:     o.Quantity,
+		Price:        o.Price,
+		LastQty:      0,
+		LastPx:       0,
+		CumQty:       o.FilledQty,
+		LeavesQty:    o.AvailableQty,
+		ExecID:       uuid.New().String(),
+		TransactTime: time.Now().Unix(),
+		OrdType:      o.ReqType,
 	}
 }
 
@@ -138,18 +143,21 @@ func (o *Order) ExecuteReject() *Execution {
 	o.Status = Rejected
 
 	return &Execution{
-		ID:         uuid.New().String(),
-		OPrice:     o.Price,
-		TradePrice: 0,
-		Quantity:   0,
-		CumQty:     o.FilledQty,
-		OID:        o.ID,
-		ClientOID:  o.ClientID,
-		Timestamp:  time.Now().UnixMilli(),
-		Action:     ExecuteReject,
-		Symbol:     o.Symbol,
-		OStatus:    o.Status,
-		OSide:      o.Side,
+		ExecType:     ExecuteReject,
+		OrdStatus:    o.Status,
+		ClOrdID:      o.ClientID,
+		OrderID:      o.ID,
+		Symbol:       o.Symbol,
+		Side:         o.Side,
+		OrderQty:     o.Quantity,
+		Price:        o.Price,
+		LastQty:      0,
+		LastPx:       0,
+		CumQty:       o.FilledQty,
+		LeavesQty:    o.AvailableQty,
+		ExecID:       uuid.New().String(),
+		TransactTime: time.Now().Unix(),
+		OrdType:      o.ReqType,
 	}
 }
 
@@ -164,50 +172,61 @@ func (o *Order) ExecuteTrade(qty int, price float64) *Execution {
 	}
 
 	return &Execution{
-		ID:         uuid.New().String(),
-		OPrice:     o.Price,
-		TradePrice: price,
-		Quantity:   qty,
-		CumQty:     o.FilledQty,
-		OID:        o.ID,
-		ClientOID:  o.ClientID,
-		Timestamp:  time.Now().UnixMilli(),
-		Action:     ExecuteTrade,
-		Symbol:     o.Symbol,
-		OStatus:    o.Status,
-		OSide:      o.Side,
+		ExecType:     ExecuteTrade,
+		OrdStatus:    o.Status,
+		ClOrdID:      o.ClientID,
+		OrderID:      o.ID,
+		Symbol:       o.Symbol,
+		Side:         o.Side,
+		OrderQty:     o.Quantity,
+		Price:        o.Price,
+		LastQty:      qty,
+		LastPx:       price,
+		CumQty:       o.FilledQty,
+		LeavesQty:    o.AvailableQty,
+		ExecID:       uuid.New().String(),
+		TransactTime: time.Now().Unix(),
+		OrdType:      o.ReqType,
 	}
 }
 
 func (o *Order) ExecuteCancel() *Execution {
 	o.Status = Cancelled
 	return &Execution{
-		ID:        uuid.New().String(),
-		OPrice:    o.Price,
-		Quantity:  o.Quantity,
-		CumQty:    o.FilledQty,
-		OID:       o.ID,
-		ClientOID: o.ClientID,
-		Timestamp: time.Now().UnixMilli(),
-		Action:    ExecuteCancel,
-		Symbol:    o.Symbol,
-		OStatus:   o.Status,
-		OSide:     o.Side,
+		ExecType:     ExecuteCancel,
+		OrdStatus:    o.Status,
+		ClOrdID:      o.ClientID,
+		OrderID:      o.ID,
+		Symbol:       o.Symbol,
+		Side:         o.Side,
+		OrderQty:     o.Quantity,
+		Price:        o.Price,
+		LastQty:      0,
+		LastPx:       0,
+		CumQty:       o.FilledQty,
+		LeavesQty:    o.AvailableQty,
+		ExecID:       uuid.New().String(),
+		TransactTime: time.Now().Unix(),
+		OrdType:      o.ReqType,
 	}
 }
 
 func (o *Order) ExecuteAccept() *Execution {
 	return &Execution{
-		ID:        uuid.New().String(),
-		OPrice:    o.Price,
-		Quantity:  o.Quantity,
-		CumQty:    o.FilledQty,
-		OID:       o.ID,
-		ClientOID: o.ClientID,
-		Timestamp: time.Now().UnixMilli(),
-		Action:    ExecuteAccept,
-		Symbol:    o.Symbol,
-		OStatus:   o.Status,
-		OSide:     o.Side,
+		ExecType:     ExecuteAccept,
+		OrdStatus:    o.Status,
+		ClOrdID:      o.ClientID,
+		OrderID:      o.ID,
+		Symbol:       o.Symbol,
+		Side:         o.Side,
+		OrderQty:     o.Quantity,
+		Price:        o.Price,
+		LastQty:      0,
+		LastPx:       0,
+		CumQty:       o.FilledQty,
+		LeavesQty:    o.AvailableQty,
+		ExecID:       uuid.New().String(),
+		TransactTime: time.Now().Unix(),
+		OrdType:      o.ReqType,
 	}
 }
