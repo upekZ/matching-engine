@@ -3,7 +3,6 @@ package db_writer
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	_ "github.com/jackc/pgx/v5"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/upekZ/matching-engine/internal/models"
@@ -30,7 +29,7 @@ type DbEngine struct {
 func RunDBEngine(ctx context.Context, cacheClient CacheClient, maxBatchSize int, batchSize int) error {
 	cancelCtx, cancel := context.WithCancel(ctx)
 
-	connStr := "postgres://postgres:postgres@localhost:5432/executions?sslmode=disable"
+	connStr := "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
 	db, err := sql.Open("pgx", connStr)
 
 	if err != nil {
@@ -75,8 +74,6 @@ func (engine *DbEngine) startExecWriter() {
 				return
 			}
 
-			fmt.Printf("running unknowingly")
-
 			batch = append(batch, exec...)
 			if len(batch) >= engine.maxBatchSize {
 				engine.flushExecutions(batch)
@@ -108,29 +105,11 @@ func (engine *DbEngine) flushExecutions(batch []*models.Execution) {
 	ctx, cancel := context.WithTimeout(engine.ctx, 120*time.Second)
 	defer cancel()
 
-	tx, err := engine.dbClient.BeginTx(ctx, nil)
-	if err != nil {
-		log.Printf("failed db starting: %v", err)
-		return
-	}
-
-	txQueries := engine.queryExec.WithTx(tx)
-
-	successful := 0
 	for _, exec := range batch {
-		if err := txQueries.UpsertExecution(ctx, convertToSqlParams(exec)); err != nil {
+		if err := engine.queryExec.UpsertExecution(ctx, convertToSqlParams(exec)); err != nil {
 			log.Printf("failed db execution %s: %v", exec.ExecID, err)
-			tx.Rollback()
 			return
 		}
-		successful++
-	}
-
-	if err := tx.Commit(); err != nil {
-		log.Printf("failed to commit transaction: %v", err)
-		tx.Rollback()
-	} else {
-		log.Printf("routine db write success")
 	}
 }
 
