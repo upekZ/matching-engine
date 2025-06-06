@@ -24,8 +24,8 @@ type DBEngine interface {
 }
 
 type Engine struct {
-	orderBooks    map[string]*OrderBook
-	orderChannels map[string]chan orderRequest
+	orderBooks    sync.Map
+	orderChannels sync.Map
 	mutex         sync.RWMutex
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -43,8 +43,8 @@ type orderRequest struct {
 func New(msgBroker MessageBroker, cacheClient CacheStore) *Engine {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Engine{
-		orderBooks:    make(map[string]*OrderBook),
-		orderChannels: make(map[string]chan orderRequest),
+		orderBooks:    sync.Map{},
+		orderChannels: sync.Map{},
 		MsgBroker:     msgBroker,
 		CacheClient:   cacheClient,
 		ctx:           ctx,
@@ -58,23 +58,26 @@ func (e *Engine) AddNewRequest(orderReq *models.Order) models.Order {
 
 	newOrder := models.NewOrder(orderReq.ClientID, orderReq.Symbol, orderReq.Side, orderReq.Price, orderReq.Quantity, orderReq.ReqType)
 
-	e.mutex.Lock()
-	orderChan, exists := e.orderChannels[newOrder.Symbol]
+	orderChan, exists := e.orderChannels.Load(newOrder.ID)
 	if !exists {
 		orderChan = e.addNewSymbol(newOrder.Symbol)
-		e.orderChannels[newOrder.Symbol] = orderChan
 	}
-	e.mutex.Unlock()
 
-	go e.processRequest(newOrder, orderChan)
+	go e.processRequest(newOrder, orderChan.(chan orderRequest))
 	return *orderReq
 }
 
 func (e *Engine) addNewSymbol(symbol string) chan orderRequest {
 	book := NewOrderBook(symbol)
 	channel := make(chan orderRequest, 264)
-	e.orderBooks[symbol] = book
-	e.orderChannels[symbol] = channel
+
+	if loadedBook, exists := e.orderBooks.LoadOrStore(symbol, book); exists {
+		book = loadedBook.(*OrderBook)
+	}
+
+	if loadedChannel, exists := e.orderChannels.LoadOrStore(symbol, channel); exists {
+		channel = loadedChannel.(chan orderRequest)
+	}
 
 	go e.runOrderBook(book, channel)
 
@@ -85,7 +88,7 @@ func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) 
 
 	ctx, cancel := context.WithTimeout(e.ctx, 10*time.Second)
 
-	book, _ := e.orderBooks[order.Symbol]
+	book, _ := e.orderBooks.Load(order.Symbol)
 	execChan := make(chan []*models.Execution)
 
 	defer func() {
@@ -107,7 +110,7 @@ func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) 
 	select {
 	case trades := <-execChan:
 		go e.queueExecutionsToStore(trades)
-		executions := book.ProcessExecutionsToReport(trades)
+		executions := book.(*OrderBook).ProcessExecutionsToReport(trades)
 
 		pubCtx, pubCancel := context.WithTimeout(e.ctx, 2*time.Second)
 		defer pubCancel()
