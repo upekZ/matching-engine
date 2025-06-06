@@ -13,6 +13,7 @@ import (
 
 type CacheClient interface {
 	GetExecutions(ctx context.Context) ([]*models.Execution, error)
+	ClearCachedExecutions(ctx context.Context) error
 }
 
 type DbEngine struct {
@@ -50,15 +51,6 @@ func RunDBEngine(ctx context.Context, cacheClient CacheClient, maxBatchSize int,
 	return nil
 }
 
-func (engine *DbEngine) QueueTrade(exec []*models.Execution) error {
-	select {
-	case engine.executionQueue <- exec:
-		return nil
-	case <-engine.ctx.Done():
-		return engine.ctx.Err()
-	}
-}
-
 func (engine *DbEngine) startExecWriter() {
 
 	ticker := time.NewTicker(5 * time.Second)
@@ -86,8 +78,12 @@ func (engine *DbEngine) startExecWriter() {
 				engine.executionQueue <- executions
 			}
 
-			log.Printf("flushing data.. writing %d executions to database", len(batch))
+			log.Printf("flushing data.. writing %d executions to db", len(executions))
 			engine.flushExecutions(batch)
+
+			if err := engine.cacheClient.ClearCachedExecutions(context.Background()); err != nil {
+				log.Printf("Unable to clear cached executions: %v\n", err)
+			}
 			batch = nil
 
 		case <-engine.ctx.Done():
@@ -101,7 +97,6 @@ func (engine *DbEngine) flushExecutions(batch []*models.Execution) {
 	if len(batch) == 0 {
 		return
 	}
-
 	ctx, cancel := context.WithTimeout(engine.ctx, 120*time.Second)
 	defer cancel()
 

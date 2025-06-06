@@ -20,9 +20,7 @@ func NewCacheClient(addr string) (*Client, error) {
 	return &Client{client: client}, nil
 }
 
-func (c *Client) SaveTrades(market string, trades []*models.Execution) error {
-
-	var allTrades [][]byte
+func (c *Client) SaveTrades(trades []*models.Execution) error {
 
 	for _, trade := range trades {
 		data, err := json.Marshal(trade)
@@ -33,16 +31,9 @@ func (c *Client) SaveTrades(market string, trades []*models.Execution) error {
 		if err := c.client.Set(context.Background(), "trade:"+trade.ExecID, data, 0).Err(); err != nil {
 			return err
 		}
-		allTrades = append(allTrades, data)
 	}
 
-	payload, err := json.Marshal(allTrades)
-	if err != nil {
-		return err
-	}
-
-	return c.client.Publish(context.Background(), "trades:"+market, payload).Err()
-
+	return nil
 }
 
 func (c *Client) GetExecutions(ctx context.Context) ([]*models.Execution, error) {
@@ -66,4 +57,20 @@ func (c *Client) GetExecutions(ctx context.Context) ([]*models.Execution, error)
 		trades = append(trades, &exec)
 	}
 	return trades, nil
+}
+
+func (c *Client) ClearCachedExecutions(ctx context.Context) error {
+
+	keys, err := c.client.Keys(ctx, "trade:*").Result()
+	if err != nil {
+		log.Printf("error getting keys: %v", err)
+		return err
+	}
+	_, err = c.client.Del(ctx, keys...).Result()
+	if err != nil {
+		log.Printf("error deleting keys: %v", err)
+		return err
+	}
+
+	return nil
 }

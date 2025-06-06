@@ -11,16 +11,12 @@ import (
 )
 
 type CacheStore interface {
-	SaveTrades(market string, trades []*models.Execution) error
+	SaveTrades(trades []*models.Execution) error
 }
 
 type MessageBroker interface {
 	PublishOrderResponse(ctx context.Context, market string, data []byte) error
 	SubscribeToResponsesByBroker(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error
-}
-
-type DBEngine interface {
-	QueueTrade(trade []*models.Execution) error
 }
 
 type Engine struct {
@@ -31,7 +27,6 @@ type Engine struct {
 	cancel        context.CancelFunc
 	MsgBroker     MessageBroker
 	CacheClient   CacheStore
-	Store         DBEngine
 }
 
 type orderRequest struct {
@@ -89,7 +84,7 @@ func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) 
 	ctx, cancel := context.WithTimeout(e.ctx, 10*time.Second)
 
 	book, _ := e.orderBooks.Load(order.Symbol)
-	execChan := make(chan []*models.Execution)
+	execChan := make(chan []*models.Execution, 264)
 
 	defer func() {
 		close(execChan)
@@ -109,18 +104,8 @@ func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) 
 
 	select {
 	case trades := <-execChan:
-		go e.queueExecutionsToStore(trades)
-		executions := book.(*OrderBook).ProcessExecutionsToReport(trades)
+		go e.processExecutions(book.(*OrderBook), trades)
 
-		pubCtx, pubCancel := context.WithTimeout(e.ctx, 2*time.Second)
-		defer pubCancel()
-
-		if err := e.publishExecutions(pubCtx, order.Symbol, executions); err != nil {
-			log.Printf("Error publishing execusions: %s", err.Error())
-		}
-		if err := e.CacheClient.SaveTrades(order.Symbol, trades); err != nil {
-			log.Printf("Error caching execusions: %s", err.Error())
-		}
 	case <-ctx.Done():
 		log.Printf("order request failed - timeout: %s", ctx.Err())
 	}
@@ -160,10 +145,19 @@ func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 	}
 }
 
-func (e *Engine) queueExecutionsToStore(executions []*models.Execution) {
-	if err := e.Store.QueueTrade(executions); err != nil {
-		log.Printf("Error queuing trade: %s", err.Error())
+func (e *Engine) processExecutions(book *OrderBook, trades []*models.Execution) {
+
+	executions := book.ProcessExecutionsToReport(trades)
+	pubCtx, pubCancel := context.WithTimeout(e.ctx, 2*time.Second)
+	defer pubCancel()
+
+	if err := e.publishExecutions(pubCtx, book.market, executions); err != nil {
+		log.Printf("Error publishing executions: %s", err.Error())
 	}
+	if err := e.CacheClient.SaveTrades(trades); err != nil {
+		log.Printf("Error caching executions: %s", err.Error())
+	}
+
 }
 
 func (e *Engine) publishExecutions(ctx context.Context, symbol string, execReport models.ExecutionReport) error {
