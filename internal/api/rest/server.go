@@ -8,10 +8,10 @@ import (
 )
 
 type Server struct {
-	service OrderService
+	service MatchingEngine
 }
 
-func NewServer(service OrderService) *Server {
+func NewServer(service MatchingEngine) *Server {
 	return &Server{
 		service: service,
 	}

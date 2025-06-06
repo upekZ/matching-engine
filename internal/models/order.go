@@ -20,6 +20,7 @@ const (
 	NewOrderState   OrderStatus = "new"
 	PartiallyFilled OrderStatus = "partiallyFilled"
 	Filled          OrderStatus = "filled"
+	PendingCancel   OrderStatus = "pendingCancel"
 	Cancelled       OrderStatus = "cancelled"
 	Rejected        OrderStatus = "rejected"
 )
@@ -138,6 +139,28 @@ func (o *Order) ExecuteNew() *Execution {
 	}
 }
 
+func (o *Order) ExecuteCancelReq() *Execution {
+
+	o.Status = PendingCancel
+
+	return &Execution{
+		ExecType:     ExecutePendingCancel,
+		OrdStatus:    o.Status,
+		ClOrdID:      o.ClientID,
+		OrderID:      o.ID,
+		Symbol:       o.Symbol,
+		Side:         o.Side,
+		OrderQty:     o.Quantity,
+		Price:        o.Price,
+		LastQty:      0,
+		LastPx:       0,
+		CumQty:       o.FilledQty,
+		LeavesQty:    o.AvailableQty,
+		ExecID:       uuid.New().String(),
+		TransactTime: time.Now().Unix(),
+		OrdType:      o.ReqType,
+	}
+}
 func (o *Order) ExecuteReject() *Execution {
 
 	o.Status = Rejected

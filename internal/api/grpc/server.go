@@ -11,7 +11,6 @@ import (
 )
 
 type GlobalEngine interface {
-	PlaceRequest(order *models.Order) models.Order
 	SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error
 }
 
@@ -21,24 +20,6 @@ type CacheStore interface {
 type OrderServiceHandler struct {
 	engine GlobalEngine
 	UnimplementedOrderServiceServer
-}
-
-func (s *OrderServiceHandler) PlaceNewOrder(ctx context.Context, req *OrderRequest) (*OrderResponse, error) {
-
-	if req.Price <= 0 || req.Quantity <= 0 || (req.Side != "buy" && req.Side != "sell") {
-		return nil, status.Error(codes.InvalidArgument, "Invalid order parameters")
-	}
-
-	order := models.NewOrder(req.ClientId, req.Symbol, models.OrderSide(req.Side), float64(req.Price), int(req.Quantity), models.OrderType(req.Type))
-	s.engine.PlaceRequest(order) //ToDo handle output types
-
-	resp := &OrderResponse{
-		OrderId: order.ClientID,
-		Status:  OrderResponse_PENDING,
-	}
-	//ToDo handle errors
-	resp.Status = OrderResponse_CONFIRMED
-	return resp, nil
 }
 
 func NewServer(port string, eng GlobalEngine) (*grpc.Server, error) {
@@ -85,7 +66,7 @@ func (s *OrderServiceHandler) SubscribeOrderUpdates(req *MarketRequest, stream O
 			if !ok {
 				return nil
 			}
-			grpcResp := ConvertToProtoExecReport(response)
+			grpcResp := convertToProtoExecReport(response)
 			if err := stream.Send(grpcResp); err != nil {
 				return status.Errorf(codes.Internal, "Failed to send response: %v", err)
 			}
@@ -93,7 +74,7 @@ func (s *OrderServiceHandler) SubscribeOrderUpdates(req *MarketRequest, stream O
 	}
 }
 
-func ConvertToProtoExecReport(input models.ExecutionReport) *ExecReport {
+func convertToProtoExecReport(input models.ExecutionReport) *ExecReport {
 	execReport := &ExecReport{
 		ExecReport: make(map[string]*ExecutionList, len(input)),
 	}

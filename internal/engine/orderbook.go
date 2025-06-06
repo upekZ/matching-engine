@@ -61,11 +61,11 @@ func (ob *OrderBook) addToOrderBook(order *models.Order) *models.Execution {
 func (ob *OrderBook) CancelOrder(order *models.Order) ([]*models.Execution, error) {
 
 	execution := make([]*models.Execution, 0, 2)
-	execution = append(execution, order.ExecuteNew())
+	execution = append(execution, order.ExecuteCancelReq())
 
 	if err := ob.removeOrder(*order); err != nil {
 		execution = append(execution, order.ExecuteReject())
-		return execution, fmt.Errorf("cancel failure: %s", err.Error())
+		return execution, fmt.Errorf("cancel failure for req[%s] : %s", order.ClientID, err.Error())
 	}
 
 	execution = append(execution, order.ExecuteCancel())
@@ -79,11 +79,11 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 
 	_, priceList := ob.getContainers(order.GetOppositeOrderType())
 
-	allTrades := make([]*models.Execution, 0, 2)
+	allTrades := make([]*models.Execution, 0, 4)
 	filledOrders := make([]models.Order, 0, 1)
 
 	defer func() {
-		//filled orders are removed from Order-book at the end after request completion
+		//filled orders are removed from Order-book at the end after matching completion
 		for _, order := range filledOrders {
 			if err := ob.removeOrder(order); err != nil {
 				log.Printf("Error removing order[%s] from orderbook: %v", order.ClientID, err)
@@ -99,10 +99,10 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 			break
 		}
 
-		trades, removeOrders := ob.matchOrdersInPrice(currentPrice, order)
-		filledOrders = append(filledOrders, removeOrders...)
+		execs, toRemoveOrders := ob.matchOrdersInPrice(currentPrice, order)
+		filledOrders = append(filledOrders, toRemoveOrders...)
 
-		allTrades = append(allTrades, trades...)
+		allTrades = append(allTrades, execs...)
 	}
 
 	return allTrades

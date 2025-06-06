@@ -12,17 +12,26 @@ import (
 
 type CacheStore interface {
 	SaveTrades(market string, trades []*models.Execution) error
+}
+
+type MessageBroker interface {
 	PublishOrderResponse(ctx context.Context, market string, data []byte) error
-	SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error
+	SubscribeToResponsesByBroker(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error
+}
+
+type DBEngine interface {
+	QueueTrade(trade []*models.Execution) error
 }
 
 type Engine struct {
 	orderBooks    map[string]*OrderBook
 	orderChannels map[string]chan orderRequest
-	CacheClient   CacheStore
 	mutex         sync.RWMutex
 	ctx           context.Context
 	cancel        context.CancelFunc
+	MsgBroker     MessageBroker
+	CacheClient   CacheStore
+	Store         DBEngine
 }
 
 type orderRequest struct {
@@ -31,18 +40,19 @@ type orderRequest struct {
 	execChan   chan []*models.Execution
 }
 
-func New(cacheStore CacheStore) *Engine {
+func New(msgBroker MessageBroker, cacheClient CacheStore) *Engine {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Engine{
 		orderBooks:    make(map[string]*OrderBook),
 		orderChannels: make(map[string]chan orderRequest),
-		CacheClient:   cacheStore,
+		MsgBroker:     msgBroker,
+		CacheClient:   cacheClient,
 		ctx:           ctx,
 		cancel:        cancel,
 	}
 }
 
-func (e *Engine) PlaceRequest(orderReq *models.Order) models.Order {
+func (e *Engine) AddNewRequest(orderReq *models.Order) models.Order {
 
 	//proposed solution creates symbol specific channels dynamically if not in existence.
 
@@ -96,6 +106,7 @@ func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) 
 
 	select {
 	case trades := <-execChan:
+		go e.queueExecutionsToStore(trades)
 		executions := book.ProcessExecutionsToReport(trades)
 
 		pubCtx, pubCancel := context.WithTimeout(e.ctx, 2*time.Second)
@@ -133,7 +144,7 @@ func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 				executions, err = book.CancelOrder(req.order)
 			}
 
-			req.execChan <- executions //executions cannot be 0 since there would at least be new request
+			req.execChan <- executions //executions cannot be 0 since there would at least be a new order or new cancel
 
 			if err != nil { //pushing to error channel is redundant
 				log.Printf("Error processing order[%s]: %s", req.order.ClientID, err.Error())
@@ -146,6 +157,12 @@ func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 	}
 }
 
+func (e *Engine) queueExecutionsToStore(executions []*models.Execution) {
+	if err := e.Store.QueueTrade(executions); err != nil {
+		log.Printf("Error queuing trade: %s", err.Error())
+	}
+}
+
 func (e *Engine) publishExecutions(ctx context.Context, symbol string, execReport models.ExecutionReport) error {
 
 	data, err := json.Marshal(execReport)
@@ -154,17 +171,13 @@ func (e *Engine) publishExecutions(ctx context.Context, symbol string, execRepor
 		return fmt.Errorf("failed to publish execution reports")
 	}
 
-	if err := e.publishOrderResponse(ctx, symbol, data); err != nil {
+	if err := e.MsgBroker.PublishOrderResponse(ctx, symbol, data); err != nil {
 		log.Printf("Failed to publish data: %v", err)
 		return fmt.Errorf("failed to publish execution reports")
 	}
 	return nil
 }
 
-func (e *Engine) publishOrderResponse(ctx context.Context, market string, data []byte) error {
-	return e.CacheClient.PublishOrderResponse(ctx, market, data)
-}
-
 func (e *Engine) SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error {
-	return e.CacheClient.SubscribeToResponses(ctx, market, responseChannel)
+	return e.MsgBroker.SubscribeToResponsesByBroker(ctx, market, responseChannel)
 }
