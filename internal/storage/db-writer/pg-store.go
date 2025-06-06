@@ -3,7 +3,9 @@ package db_writer
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	_ "github.com/jackc/pgx/v5"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/upekZ/matching-engine/internal/models"
 	sqlc2 "github.com/upekZ/matching-engine/internal/storage/sqlc"
 	"log"
@@ -72,6 +74,8 @@ func (engine *DbEngine) startExecWriter() {
 				engine.flushExecutions(exec)
 				return
 			}
+
+			fmt.Printf("running unknowingly")
 
 			batch = append(batch, exec...)
 			if len(batch) >= engine.maxBatchSize {
