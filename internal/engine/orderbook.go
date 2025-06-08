@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/upekZ/matching-engine/internal/models"
 	"log"
@@ -132,7 +133,6 @@ func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*
 		} else {
 			tradeQty = order.AvailableQty
 		}
-
 		matchedTrades = append(matchedTrades, bookOrder.ExecuteTrade(tradeQty, price))
 		matchedTrades = append(matchedTrades, order.ExecuteTrade(tradeQty, price))
 
@@ -162,7 +162,7 @@ func (ob *OrderBook) validateReq(order *models.Order) error {
 	}
 
 	if errStr != "" {
-		return fmt.Errorf(errStr)
+		return errors.New(errStr)
 	}
 	return nil
 }

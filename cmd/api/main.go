@@ -33,6 +33,7 @@ func main() {
 
 	server := rest.NewServer(eng)
 
+	//dbengine can run in isolation with a cache reader
 	if dbErr := storage.RunDBEngine(context.Background(), redisCacheClient, 1000000, 1000); dbErr != nil {
 		log.Printf("DB Start Failure: %v", dbErr)
 	}
