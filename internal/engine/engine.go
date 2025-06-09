@@ -20,16 +20,23 @@ type MessageBroker interface {
 }
 
 type Engine struct {
-	orderBooks    sync.Map
-	orderChannels sync.Map
-	mutex         sync.RWMutex
-	ctx           context.Context
-	cancel        context.CancelFunc
-	MsgBroker     MessageBroker
-	CacheClient   CacheStore
+	orderBooks      sync.Map
+	orderChannels   sync.Map
+	stopReqChannels sync.Map
+	mutex           sync.RWMutex
+	ctx             context.Context
+	cancel          context.CancelFunc
+	MsgBroker       MessageBroker
+	CacheClient     CacheStore
 }
 
 type orderRequest struct {
+	isNewOrder bool
+	order      *models.Order
+	execChan   chan []*models.Execution
+}
+
+type stopOrderRequest struct {
 	isNewOrder bool
 	order      *models.Order
 	execChan   chan []*models.Execution
@@ -49,11 +56,19 @@ func New(msgBroker MessageBroker, cacheClient CacheStore) *Engine {
 
 func (e *Engine) AddNewRequest(orderReq *models.Order) models.Order {
 
+	var newOrder *models.Order
 	//proposed solution creates symbol specific channels dynamically if not in existence.
+	switch orderReq.ReqType {
+	case models.NewLimitOrder:
+		newOrder = models.AddNewLimitReq(orderReq.ClientID, orderReq.Symbol, orderReq.Side, orderReq.Price, orderReq.Quantity)
+	case models.NewMarketOrder:
+		newOrder = models.AddNewMarketReq(orderReq.ClientID, orderReq.Symbol, orderReq.Side, orderReq.Quantity)
 
-	newOrder := models.NewOrder(orderReq.ClientID, orderReq.Symbol, orderReq.Side, orderReq.Price, orderReq.Quantity, orderReq.ReqType)
+	default: //set market order as default mode in case not specified -> if fields are invalid, would reject when processing
+		newOrder = models.AddNewMarketReq(orderReq.ClientID, orderReq.Symbol, orderReq.Side, orderReq.Quantity)
+	}
 
-	orderChan, exists := e.orderChannels.Load(newOrder.ID)
+	orderChan, exists := e.orderChannels.Load(newOrder.Symbol)
 	if !exists {
 		orderChan = e.addNewSymbol(newOrder.Symbol)
 	}
@@ -84,6 +99,7 @@ func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) 
 	ctx, cancel := context.WithTimeout(e.ctx, 10*time.Second)
 
 	book, _ := e.orderBooks.Load(order.Symbol)
+
 	execChan := make(chan []*models.Execution, 264)
 
 	defer func() {

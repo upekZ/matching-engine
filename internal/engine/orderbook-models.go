@@ -46,6 +46,9 @@ type OrderBook struct {
 	BuyOrderContainers  *BuyOrders
 	OrderIndex          map[string]*models.OrderElement
 	ClientIDs           map[string]string
+
+	StopBuyOrderContainers  *StopBuyOrders
+	StopSellOrderContainers *StopSellOrders
 }
 
 func NewOrderBook(market string) *OrderBook {
@@ -58,10 +61,13 @@ func NewOrderBook(market string) *OrderBook {
 
 		OrderIndex: make(map[string]*models.OrderElement),
 		ClientIDs:  make(map[string]string),
+
+		StopBuyOrderContainers:  NewStopBuyContainers(),
+		StopSellOrderContainers: NewStopSellContainers(),
 	}
 }
 
-func (ob *OrderBook) getContainers(side models.OrderSide) (PriceToOrderMap, *rbt.Tree) {
+func (ob *OrderBook) getOBContainers(side models.OrderSide) (PriceToOrderMap, *rbt.Tree) {
 	switch side {
 	case models.BuyOrder:
 		return ob.BuyOrderContainers.getContainers()

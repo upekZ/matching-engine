@@ -42,7 +42,7 @@ func (ob *OrderBook) AddSellRequest(order *models.Order) ([]*models.Execution, e
 
 func (ob *OrderBook) addToOrderBook(order *models.Order) *models.Execution {
 
-	priceMap, priceList := ob.getContainers(order.Side)
+	priceMap, priceList := ob.getOBContainers(order.Side)
 
 	if priceMap[order.Price] == nil {
 		priceMap[order.Price] = models.NewOrderList()
@@ -76,7 +76,7 @@ func (ob *OrderBook) CancelOrder(order *models.Order) ([]*models.Execution, erro
 
 func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator) []*models.Execution {
 
-	_, priceList := ob.getContainers(order.GetOppositeOrderType())
+	_, priceList := ob.getOBContainers(order.GetOppositeOrderType())
 
 	allTrades := make([]*models.Execution, 0, 4)
 	filledOrders := make([]models.Order, 0, 1)
@@ -111,7 +111,7 @@ func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*
 
 	filledOrders := make([]models.Order, 0, 1)
 
-	ordersByPrice, _ := ob.getContainers(order.GetOppositeOrderType())
+	ordersByPrice, _ := ob.getOBContainers(order.GetOppositeOrderType())
 
 	priceInfo := ordersByPrice[price]
 
@@ -177,7 +177,7 @@ func (ob *OrderBook) removeOrder(order models.Order) error {
 		return fmt.Errorf("order: %s doesn't exist", order.ID)
 	}
 
-	orderList, priceList := ob.getContainers(order.Side)
+	orderList, priceList := ob.getOBContainers(order.Side)
 
 	price := orderInfo.Value().Price
 	bucket := orderList[price]

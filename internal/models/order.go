@@ -29,6 +29,9 @@ const (
 	NewLimitOrder  OrderType = "newLimitOrder"
 	NewMarketOrder OrderType = "newMarketOrder"
 	CancelOrder    OrderType = "cancelOrder"
+
+	NewStopOrder     OrderType = "newStopOrder"
+	NewStopLossOrder OrderType = "newStopLossOrder"
 )
 
 type Order struct {
@@ -37,6 +40,7 @@ type Order struct {
 	Symbol       string      `json:"symbol"`
 	Side         OrderSide   `json:"side"`
 	Price        float64     `json:"price"`
+	StopPx       float64     `json:"stop_px"`
 	Quantity     int         `json:"quantity"`
 	FilledQty    int         `json:"filled_qty"`
 	AvailableQty int         `json:"available_qty"`
@@ -45,7 +49,7 @@ type Order struct {
 	ReqType      OrderType   `json:"req_type"`
 }
 
-func NewOrder(clientID string, symbol string, side OrderSide, price float64, quantity int, orderType OrderType) *Order {
+func AddNewLimitReq(clientID string, symbol string, side OrderSide, price float64, quantity int) *Order {
 	return &Order{
 		ID:           uuid.New().String(),
 		ClientID:     clientID,
@@ -57,9 +61,59 @@ func NewOrder(clientID string, symbol string, side OrderSide, price float64, qua
 		AvailableQty: quantity,
 		Timestamp:    time.Now().Unix(),
 		Status:       NewOrderState,
-		ReqType:      orderType,
+		ReqType:      NewLimitOrder,
 	}
 
+}
+
+func AddNewMarketReq(clientID string, symbol string, side OrderSide, quantity int) *Order {
+	return &Order{
+		ID:           uuid.New().String(),
+		ClientID:     clientID,
+		Symbol:       symbol,
+		Side:         side,
+		Price:        0,
+		Quantity:     quantity,
+		FilledQty:    0,
+		AvailableQty: quantity,
+		Timestamp:    time.Now().Unix(),
+		Status:       NewOrderState,
+		ReqType:      NewMarketOrder,
+	}
+
+}
+
+func AddNewStopReq(clientID string, symbol string, side OrderSide, price float64, quantity int) *Order {
+	return &Order{
+		ID:           uuid.New().String(),
+		ClientID:     clientID,
+		Symbol:       symbol,
+		Side:         side,
+		StopPx:       price,
+		Quantity:     quantity,
+		FilledQty:    0,
+		AvailableQty: quantity,
+		Timestamp:    time.Now().Unix(),
+		Status:       NewOrderState,
+		ReqType:      NewStopOrder,
+	}
+}
+
+func AddNewStopLossReq(clientID string, symbol string, side OrderSide, stopPrice float64, reqPrice float64, quantity int) *Order {
+	return &Order{
+		ID:           uuid.New().String(),
+		ClientID:     clientID,
+		Symbol:       symbol,
+		Side:         side,
+		StopPx:       stopPrice,
+		Price:        reqPrice,
+		Quantity:     quantity,
+		FilledQty:    0,
+		AvailableQty: quantity,
+		Timestamp:    time.Now().Unix(),
+		Status:       NewOrderState,
+		ReqType:      NewStopLossOrder,
+	}
 }
 
 func OrderFromJSON(data []byte) (*Order, error) {

@@ -95,7 +95,7 @@ func TestEngine_ProcessRequest_NewOrder(t *testing.T) {
 
 	book, _ := engine.orderBooks.Load("BTC-USD")
 	ob := book.(*OrderBook)
-	priceMap, _ := ob.getContainers(models.BuyOrder)
+	priceMap, _ := ob.getOBContainers(models.BuyOrder)
 	assert.NotNil(t, priceMap[50000.0], "Order should be added to order book")
 }
 
@@ -143,9 +143,9 @@ func TestEngine_ProcessRequest_CancelOrder(t *testing.T) {
 func TestOrderBook_MatchOrder(t *testing.T) {
 	ob := NewOrderBook("BTC-USD")
 
-	buyOrder := models.NewOrder("client1", "BTC-USD", models.BuyOrder, 50000.0, 100, models.NewLimitOrder)
+	buyOrder := models.AddNewLimitReq("client1", "BTC-USD", models.BuyOrder, 50000.0, 100)
 
-	sellOrder := models.NewOrder("client2", "BTC-USD", models.SellOrder, 50000.0, 100, models.NewLimitOrder)
+	sellOrder := models.AddNewLimitReq("client2", "BTC-USD", models.SellOrder, 50000.0, 100)
 	_, err := ob.AddBuyRequest(buyOrder)
 	assert.NoError(t, err)
 
@@ -167,12 +167,12 @@ func TestOrderBook_MatchOrder(t *testing.T) {
 func TestOrderBook_CancelOrder(t *testing.T) {
 	ob := NewOrderBook("BTC-USD")
 
-	order := models.NewOrder("client1", "BTC-USD", models.BuyOrder, 50000.0, 100, models.NewLimitOrder)
+	order := models.AddNewLimitReq("client1", "BTC-USD", models.BuyOrder, 50000.0, 100)
 
 	_, err := ob.AddBuyRequest(order)
 	assert.NoError(t, err)
 
-	cancelOrder := models.NewOrder("client1", "BTC-USD", models.BuyOrder, 50000.0, 100, models.CancelOrder)
+	cancelOrder := models.AddNewLimitReq("client1", "BTC-USD", models.BuyOrder, 50000.0, 100)
 
 	executions, err := ob.CancelOrder(cancelOrder)
 	assert.NoError(t, err)
