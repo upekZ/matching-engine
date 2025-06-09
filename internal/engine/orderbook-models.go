@@ -13,20 +13,9 @@ type SellOrders struct {
 
 func NewSellContainers() *SellOrders {
 
-	sellComparator := func(a, b interface{}) int {
-		aPrice, bPrice := a.(float64), b.(float64)
-		if aPrice < bPrice {
-			return -1
-		}
-		if aPrice > bPrice {
-			return 1
-		}
-		return 0
-	}
-
 	return &SellOrders{
 		OrdersByPrice: make(PriceToOrderMap),
-		OrderedPrices: rbt.NewWith(sellComparator),
+		OrderedPrices: rbt.NewWith(models.SellComparator),
 	}
 }
 
@@ -44,20 +33,10 @@ func (b *BuyOrders) getContainers() (PriceToOrderMap, *rbt.Tree) {
 }
 
 func NewBuyContainers() *BuyOrders {
-	buyComparator := func(a, b interface{}) int {
-		aPrice, bPrice := a.(float64), b.(float64)
-		if aPrice > bPrice {
-			return -1
-		}
-		if aPrice < bPrice {
-			return 1
-		}
-		return 0
-	}
 
 	return &BuyOrders{
 		OrdersByPrice: make(PriceToOrderMap),
-		OrderedPrices: rbt.NewWith(buyComparator),
+		OrderedPrices: rbt.NewWith(models.BuyComparator),
 	}
 }
 
