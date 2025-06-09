@@ -8,12 +8,13 @@ import (
 	"github.com/upekZ/matching-engine/internal/models"
 	sqlc2 "github.com/upekZ/matching-engine/internal/storage/sqlc"
 	"log"
+	"os"
 	"time"
 )
 
 type CacheClient interface {
-	GetExecutions(ctx context.Context) ([]*models.Execution, error)
-	ClearCachedExecutions(ctx context.Context) error
+	GetExecutions(ctx context.Context) ([]*models.Execution, []string, error)
+	ClearCachedExecutions(ctx context.Context, keys []string) error
 }
 
 type DbEngine struct {
@@ -30,9 +31,12 @@ type DbEngine struct {
 func RunDBEngine(ctx context.Context, cacheClient CacheClient, maxBatchSize int, batchSize int) error {
 	cancelCtx, cancel := context.WithCancel(ctx)
 
-	connStr := "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
-	db, err := sql.Open("pgx", connStr)
+	connStr := os.Getenv("POSTGRES_CONN")
+	if connStr == "" {
+		connStr = "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
+	}
 
+	db, err := sql.Open("pgx", connStr)
 	if err != nil {
 		log.Fatalf("Unable to connect to db: %v\n", err)
 	}
@@ -52,13 +56,11 @@ func RunDBEngine(ctx context.Context, cacheClient CacheClient, maxBatchSize int,
 }
 
 func (engine *DbEngine) startExecWriter() {
-
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	var batch []*models.Execution
 
 	for {
-
 		select {
 		case exec, ok := <-engine.executionQueue:
 			if !ok {
@@ -73,7 +75,7 @@ func (engine *DbEngine) startExecWriter() {
 			}
 
 		case <-ticker.C:
-			executions, err := engine.cacheClient.GetExecutions(context.Background())
+			executions, keys, err := engine.cacheClient.GetExecutions(context.Background())
 			if err == nil {
 				engine.executionQueue <- executions
 			}
@@ -81,7 +83,7 @@ func (engine *DbEngine) startExecWriter() {
 			log.Printf("flushing data.. writing %d executions to db", len(executions))
 			engine.flushExecutions(batch)
 
-			if err := engine.cacheClient.ClearCachedExecutions(context.Background()); err != nil {
+			if err := engine.cacheClient.ClearCachedExecutions(context.Background(), keys); err != nil {
 				log.Printf("Unable to clear cached executions: %v\n", err)
 			}
 			batch = nil

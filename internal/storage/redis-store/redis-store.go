@@ -36,12 +36,12 @@ func (c *Client) SaveTrades(trades []*models.Execution) error {
 	return nil
 }
 
-func (c *Client) GetExecutions(ctx context.Context) ([]*models.Execution, error) {
+func (c *Client) GetExecutions(ctx context.Context) ([]*models.Execution, []string, error) {
 
 	keys, err := c.client.Keys(ctx, "trade:*").Result()
 	if err != nil {
 		log.Printf("error getting keys: %v", err)
-		return nil, err
+		return nil, nil, err
 	}
 
 	var trades []*models.Execution
@@ -56,17 +56,12 @@ func (c *Client) GetExecutions(ctx context.Context) ([]*models.Execution, error)
 		}
 		trades = append(trades, &exec)
 	}
-	return trades, nil
+	return trades, keys, nil
 }
 
-func (c *Client) ClearCachedExecutions(ctx context.Context) error {
+func (c *Client) ClearCachedExecutions(ctx context.Context, keys []string) error {
 
-	keys, err := c.client.Keys(ctx, "trade:*").Result()
-	if err != nil {
-		log.Printf("error getting keys: %v", err)
-		return err
-	}
-	_, err = c.client.Del(ctx, keys...).Result()
+	_, err := c.client.Del(ctx, keys...).Result()
 	if err != nil {
 		log.Printf("error deleting keys: %v", err)
 		return err

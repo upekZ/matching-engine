@@ -253,3 +253,19 @@ func (o *Order) ExecuteAccept() *Execution {
 		OrdType:      o.ReqType,
 	}
 }
+
+func (o *Order) IsReqProcessed(price float64, comp Comparator) bool {
+
+	if o.Status == Filled {
+		return true
+	}
+
+	switch o.ReqType {
+	case NewLimitOrder:
+		if !comp(o.Price, price) {
+			return true
+		}
+	}
+
+	return false
+}
