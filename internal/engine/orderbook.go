@@ -73,11 +73,10 @@ func (ob *OrderBook) addToOrderBook(order *models.Order) {
 	order.ExecuteAccept()
 }
 
-func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator) []*models.Execution {
+func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator) {
 
 	_, priceList := ob.getOBContainers(order.GetOppositeOrderType())
 
-	allTrades := make([]*models.Execution, 0, 4)
 	filledOrders := make([]models.Order, 0, 1)
 
 	defer func() {
@@ -100,8 +99,6 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 		toRemoveOrders := ob.matchOrdersInPrice(currentPrice, order)
 		filledOrders = append(filledOrders, toRemoveOrders...)
 	}
-
-	return allTrades
 }
 
 func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) []models.Order {
