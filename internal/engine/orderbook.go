@@ -42,10 +42,14 @@ func (ob *OrderBook) addSellRequest(order *models.Order) {
 
 func (ob *OrderBook) cancelOrder(order *models.Order) {
 
+	defer order.ProcessExecutions()
+
 	order.ExecuteCancelReq()
 
 	if err := ob.removeOrder(*order); err != nil {
 		order.ExecuteReject()
+		log.Printf("Could not cancel order: %v", err)
+		return
 	}
 	order.ExecuteCancel()
 }
