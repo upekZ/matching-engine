@@ -20,7 +20,7 @@ func NewCacheClient(addr string) (*Client, error) {
 	return &Client{client: client}, nil
 }
 
-func (c *Client) SaveTrades(trades *models.Execution) error {
+func (c *Client) SaveExecutions(trades *models.Execution) error {
 
 	data, err := json.Marshal(trades)
 	if err != nil {

@@ -24,7 +24,7 @@ func NewMessageBroker(addr string) (*Client, error) {
 	return &Client{client: client}, nil
 }
 
-func (c *Client) PublishOrderResponse(ctx context.Context, market string, execReport []*models.Execution) error {
+func (c *Client) PublishOrderResponse(ctx context.Context, market string, execReport models.ExecutionReport) error {
 
 	data, err := json.Marshal(execReport)
 	if err != nil {

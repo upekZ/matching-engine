@@ -21,7 +21,7 @@ func main() {
 
 	redisMsgBroker, brokerError := redisBroker.NewMessageBroker("localhost:6379")
 	if brokerError != nil {
-		log.Fatalf("Error creating redisCache broker: %v", brokerError)
+		log.Fatalf("Error creating redis broker: %v", brokerError)
 	}
 
 	eng := engine.New(redisMsgBroker, redisCacheClient)
@@ -33,7 +33,7 @@ func main() {
 
 	server := rest.NewServer(eng)
 
-	//dbengine can run in isolation with a cache reader
+	//db-engine can run in isolation with a cache reader
 	if dbErr := storage.RunDBEngine(context.Background(), redisCacheClient, 1000000, 1000); dbErr != nil {
 		log.Printf("DB Start Failure: %v", dbErr)
 	}

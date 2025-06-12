@@ -6,73 +6,67 @@ import (
 )
 
 type PriceToOrderMap map[float64]*models.OrderList
-type SellOrders struct {
-	OrdersByPrice PriceToOrderMap
-	OrderedPrices *rbt.Tree
+type sellOrders struct {
+	ordersByPrice PriceToOrderMap
+	orderedPrices *rbt.Tree
 }
 
-func NewSellContainers() *SellOrders {
+func newSellContainers() *sellOrders {
 
-	return &SellOrders{
-		OrdersByPrice: make(PriceToOrderMap),
-		OrderedPrices: rbt.NewWith(models.SellComparator),
+	return &sellOrders{
+		ordersByPrice: make(PriceToOrderMap),
+		orderedPrices: rbt.NewWith(models.SellComparator),
 	}
 }
 
-func (s *SellOrders) getContainers() (PriceToOrderMap, *rbt.Tree) {
-	return s.OrdersByPrice, s.OrderedPrices
+func (s *sellOrders) getContainers() (PriceToOrderMap, *rbt.Tree) {
+	return s.ordersByPrice, s.orderedPrices
 }
 
-type BuyOrders struct {
-	OrdersByPrice PriceToOrderMap
-	OrderedPrices *rbt.Tree
+type buyOrders struct {
+	ordersByPrice PriceToOrderMap
+	orderedPrices *rbt.Tree
 }
 
-func (b *BuyOrders) getContainers() (PriceToOrderMap, *rbt.Tree) {
-	return b.OrdersByPrice, b.OrderedPrices
+func (b *buyOrders) getContainers() (PriceToOrderMap, *rbt.Tree) {
+	return b.ordersByPrice, b.orderedPrices
 }
 
-func NewBuyContainers() *BuyOrders {
+func newBuyContainers() *buyOrders {
 
-	return &BuyOrders{
-		OrdersByPrice: make(PriceToOrderMap),
-		OrderedPrices: rbt.NewWith(models.BuyComparator),
+	return &buyOrders{
+		ordersByPrice: make(PriceToOrderMap),
+		orderedPrices: rbt.NewWith(models.BuyComparator),
 	}
 }
 
 type OrderBook struct {
 	market              string
-	SellOrderContainers *SellOrders
-	BuyOrderContainers  *BuyOrders
-	OrderIndex          map[string]*models.OrderElement
-	ClientIDs           map[string]string
-
-	StopBuyOrderContainers  *StopBuyOrders
-	StopSellOrderContainers *StopSellOrders
+	sellOrderContainers *sellOrders
+	buyOrderContainers  *buyOrders
+	orderIndex          map[string]*models.OrderElement
+	clientIDs           map[string]string
 }
 
-func NewOrderBook(market string) *OrderBook {
+func newOrderBook(market string) *OrderBook {
 
 	return &OrderBook{
 		market: market,
 
-		SellOrderContainers: NewSellContainers(),
-		BuyOrderContainers:  NewBuyContainers(),
+		sellOrderContainers: newSellContainers(),
+		buyOrderContainers:  newBuyContainers(),
 
-		OrderIndex: make(map[string]*models.OrderElement),
-		ClientIDs:  make(map[string]string),
-
-		StopBuyOrderContainers:  NewStopBuyContainers(),
-		StopSellOrderContainers: NewStopSellContainers(),
+		orderIndex: make(map[string]*models.OrderElement),
+		clientIDs:  make(map[string]string),
 	}
 }
 
 func (ob *OrderBook) getOBContainers(side models.OrderSide) (PriceToOrderMap, *rbt.Tree) {
 	switch side {
 	case models.BuyOrder:
-		return ob.BuyOrderContainers.getContainers()
+		return ob.buyOrderContainers.getContainers()
 	case models.SellOrder:
-		return ob.SellOrderContainers.getContainers()
+		return ob.sellOrderContainers.getContainers()
 
 	default:
 		return nil, nil

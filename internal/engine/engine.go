@@ -5,32 +5,27 @@ import (
 	"github.com/upekZ/matching-engine/internal/models"
 	"log"
 	"sync"
-	"time"
 )
 
 type CacheStore interface {
-	SaveTrades(trades *models.Execution) error
+	SaveExecutions(trades *models.Execution) error
 }
 
 type MessageBroker interface {
-	PublishOrderResponse(ctx context.Context, market string, exec []*models.Execution) error
+	PublishOrderResponse(ctx context.Context, market string, exec models.ExecutionReport) error
 	SubscribeToResponsesByBroker(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error
 }
 
 type Engine struct {
 	orderBooks    sync.Map
 	orderChannels sync.Map
-	mutex         sync.RWMutex
 	ctx           context.Context
 	cancel        context.CancelFunc
 	MsgBroker     MessageBroker
 	CacheClient   CacheStore
 }
 
-type orderRequest struct {
-	isNewOrder bool
-	order      *models.Order
-}
+type orderRequest *models.Order
 
 func New(msgBroker MessageBroker, cacheClient CacheStore) *Engine {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -48,7 +43,7 @@ func (e *Engine) AddNewRequest(orderReq *models.Order) models.Order {
 
 	var newOrder *models.Order
 
-	baseStruct := &models.BaseParams{
+	baseOrderParams := &models.BaseParams{
 		ClientID:  orderReq.ClientID,
 		Symbol:    orderReq.Symbol,
 		MsgBroker: e.MsgBroker,
@@ -58,18 +53,17 @@ func (e *Engine) AddNewRequest(orderReq *models.Order) models.Order {
 	//proposed solution creates symbol specific channels dynamically if not in existence.
 	switch orderReq.ReqType {
 	case models.NewLimitOrder:
-		newOrder = models.AddNewLimitReq(baseStruct, orderReq.Side, orderReq.Price, orderReq.Quantity)
-	case models.CancelOrder:
-		newOrder = models.AddCancelReq(baseStruct)
+		newOrder = models.AddNewLimitReq(baseOrderParams, orderReq.Side, orderReq.Price, orderReq.Quantity)
 	case models.NewMarketOrder:
-		newOrder = models.AddNewMarketReq(baseStruct, orderReq.Side, orderReq.Quantity)
-	case models.NewStopOrder:
-		newOrder = models.AddNewStopReq(baseStruct, orderReq.Side, orderReq.StopPx, orderReq.Quantity) //ToDo
-	case models.NewStopLossOrder:
-		newOrder = models.AddNewStopLossReq(baseStruct, orderReq.Side, orderReq.StopPx, orderReq.Price, orderReq.Quantity) //ToDo
+		newOrder = models.AddNewMarketReq(baseOrderParams, orderReq.Side, orderReq.Quantity)
+	case models.CancelOrder:
+		newOrder = models.AddCancelReq(baseOrderParams)
+	//ToDo support more order types
 
-	default: //set market order as default mode in case not specified -> if fields are invalid, would reject when processing
-		newOrder = models.AddNewMarketReq(baseStruct, orderReq.Side, orderReq.Quantity)
+	default:
+		orderReq.ExecuteReject()
+		orderReq.ProcessExecutions()
+		return *orderReq
 	}
 
 	orderChan, exists := e.orderChannels.Load(newOrder.Symbol)
@@ -77,12 +71,13 @@ func (e *Engine) AddNewRequest(orderReq *models.Order) models.Order {
 		orderChan = e.addNewSymbol(newOrder.Symbol)
 	}
 
-	e.processRequest(newOrder, orderChan.(chan orderRequest))
+	orderChan.(chan orderRequest) <- newOrder
+
 	return *orderReq
 }
 
 func (e *Engine) addNewSymbol(symbol string) chan orderRequest {
-	book := NewOrderBook(symbol)
+	book := newOrderBook(symbol)
 	channel := make(chan orderRequest, 264)
 
 	if loadedBook, exists := e.orderBooks.LoadOrStore(symbol, book); exists {
@@ -98,45 +93,23 @@ func (e *Engine) addNewSymbol(symbol string) chan orderRequest {
 	return channel
 }
 
-func (e *Engine) processRequest(order *models.Order, channel chan orderRequest) {
-
-	_, cancel := context.WithTimeout(e.ctx, 10*time.Second)
-
-	execChan := make(chan []*models.Execution, 264)
-
-	defer func() {
-		close(execChan)
-		cancel()
-	}()
-
-	isNew := true
-	if order.ReqType == models.CancelOrder {
-		isNew = false
-	}
-
-	channel <- orderRequest{
-		isNewOrder: isNew,
-		order:      order,
-	}
-}
-
 func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 	for {
 		select {
 		case req := <-orderChan:
 
-			if req.isNewOrder {
-				switch req.order.Side {
+			if req.ReqType != models.CancelOrder {
+				switch req.Side {
 				case models.SellOrder:
-					book.AddSellRequest(req.order)
+					book.addSellRequest(req)
 				case models.BuyOrder:
-					book.AddBuyRequest(req.order)
+					book.addBuyRequest(req)
 				default:
-					log.Printf("Unknown order[%s] side %s", req.order.ClientID, req.order.Side)
+					log.Printf("Unknown order[%s] side %s", req.ClientID, req.Side)
 					continue
 				}
 			} else {
-				book.CancelOrder(req.order)
+				book.cancelOrder(req)
 			}
 		case <-e.ctx.Done():
 			return
@@ -145,5 +118,10 @@ func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
 }
 
 func (e *Engine) SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error {
-	return e.MsgBroker.SubscribeToResponsesByBroker(ctx, market, responseChannel)
+	if err := e.MsgBroker.SubscribeToResponsesByBroker(ctx, market, responseChannel); err != nil {
+		log.Println("Subscription to request-response failed")
+		return err
+	}
+
+	return nil
 }

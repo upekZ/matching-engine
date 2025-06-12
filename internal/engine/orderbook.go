@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/upekZ/matching-engine/internal/models"
@@ -12,11 +11,15 @@ func (ob *OrderBook) processRequest(order *models.Order, returnCmp models.Compar
 
 	order.ExecuteNew()
 
+	defer order.ProcessExecutions()
+
 	if err := order.ValidateReq(); err != nil {
+		order.ExecuteReject()
 		return
 	}
 
-	if err := ob.validateReq(order); err != nil {
+	if err := ob.validateReqInOB(order); err != nil {
+		order.ExecuteReject()
 		return
 	}
 
@@ -26,17 +29,25 @@ func (ob *OrderBook) processRequest(order *models.Order, returnCmp models.Compar
 		ob.addToOrderBook(order)
 	}
 
-	order.ProcessExecutions()
-
 	return
 }
 
-func (ob *OrderBook) AddBuyRequest(order *models.Order) {
+func (ob *OrderBook) addBuyRequest(order *models.Order) {
 	ob.processRequest(order, models.Lesser)
 }
 
-func (ob *OrderBook) AddSellRequest(order *models.Order) {
+func (ob *OrderBook) addSellRequest(order *models.Order) {
 	ob.processRequest(order, models.Greater)
+}
+
+func (ob *OrderBook) cancelOrder(order *models.Order) {
+
+	order.ExecuteCancelReq()
+
+	if err := ob.removeOrder(*order); err != nil {
+		order.ExecuteReject()
+	}
+	order.ExecuteCancel()
 }
 
 func (ob *OrderBook) addToOrderBook(order *models.Order) {
@@ -52,20 +63,10 @@ func (ob *OrderBook) addToOrderBook(order *models.Order) {
 
 	element := priceRef.Push(order)
 
-	ob.OrderIndex[order.ID] = element
-	ob.ClientIDs[order.ClientID] = order.ID
+	ob.orderIndex[order.ID] = element
+	ob.clientIDs[order.ClientID] = order.ID
 
 	order.ExecuteAccept()
-}
-
-func (ob *OrderBook) CancelOrder(order *models.Order) {
-
-	order.ExecuteCancelReq()
-
-	if err := ob.removeOrder(*order); err != nil {
-		order.ExecuteReject()
-	}
-	order.ExecuteCancel()
 }
 
 func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator) []*models.Execution {
@@ -92,16 +93,14 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 			break
 		}
 
-		execs, toRemoveOrders := ob.matchOrdersInPrice(currentPrice, order)
+		toRemoveOrders := ob.matchOrdersInPrice(currentPrice, order)
 		filledOrders = append(filledOrders, toRemoveOrders...)
-
-		allTrades = append(allTrades, execs...)
 	}
 
 	return allTrades
 }
 
-func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*models.Execution, []models.Order) {
+func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) []models.Order {
 
 	filledOrders := make([]models.Order, 0, 1)
 
@@ -110,8 +109,6 @@ func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*
 	priceInfo := ordersByPrice[price]
 
 	e := priceInfo.Front()
-
-	matchedTrades := make([]*models.Execution, 0, 2)
 
 	for e != nil && order.Status != models.Filled {
 
@@ -133,42 +130,28 @@ func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) ([]*
 		e = e.Next()
 	}
 
-	return matchedTrades, filledOrders
+	return filledOrders
 }
 
-func (ob *OrderBook) ProcessExecutionsToReport(trades []*models.Execution) models.ExecutionReport {
+func (ob *OrderBook) validateReqInOB(order *models.Order) error {
 
-	execReports := make(models.ExecutionReport, 2)
-
-	for _, t := range trades {
-		execReports[t.ClOrdID] = append(execReports[t.ClOrdID], t)
-	}
-
-	return execReports
-}
-
-func (ob *OrderBook) validateReq(order *models.Order) error {
-	var errStr string
 	if order.ReqType != models.CancelOrder {
-		if _, exists := ob.ClientIDs[order.ClientID]; exists {
-			errStr += "duplicate order id"
+		if _, exists := ob.clientIDs[order.ClientID]; exists {
+			return errors.New("duplicate order id")
 		}
 	}
 
-	if errStr != "" {
-		return errors.New(errStr)
-	}
 	return nil
 }
 
 func (ob *OrderBook) removeOrder(order models.Order) error {
 
-	orderID, ok := ob.ClientIDs[order.ClientID]
+	orderID, ok := ob.clientIDs[order.ClientID]
 	if !ok {
 		return fmt.Errorf("order %s not found in order-book", order.ClientID)
 	}
 
-	orderInfo, exists := ob.OrderIndex[orderID]
+	orderInfo, exists := ob.orderIndex[orderID]
 	if !exists {
 		return fmt.Errorf("order: %s doesn't exist", order.ID)
 	}
@@ -184,12 +167,8 @@ func (ob *OrderBook) removeOrder(order models.Order) error {
 		priceList.Remove(price)
 	}
 
-	delete(ob.OrderIndex, order.ID)
-	delete(ob.ClientIDs, order.ClientID)
+	delete(ob.orderIndex, order.ID)
+	delete(ob.clientIDs, order.ClientID)
 
 	return nil
-}
-
-func (ob *OrderBook) ToJSON() ([]byte, error) {
-	return json.Marshal(ob)
 }

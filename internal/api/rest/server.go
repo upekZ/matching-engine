@@ -11,6 +11,14 @@ import (
 	"time"
 )
 
+type MatchingEngine interface {
+	AddNewRequest(order *models.Order) models.Order
+}
+
+type Channel interface {
+	ServeWS() http.HandlerFunc
+}
+
 type Server struct {
 	matcher MatchingEngine
 }
@@ -40,14 +48,6 @@ func (s *Server) Start() error {
 	return err
 }
 
-type MatchingEngine interface {
-	AddNewRequest(order *models.Order) models.Order
-}
-
-type Channel interface {
-	ServeWS() http.HandlerFunc
-}
-
 func (s *Server) newOrderRequest(writer http.ResponseWriter, req *http.Request) {
 	var order models.Order
 
@@ -58,7 +58,7 @@ func (s *Server) newOrderRequest(writer http.ResponseWriter, req *http.Request) 
 	}
 	orderResp := s.matcher.AddNewRequest(&order)
 
-	if err := WriteJSON(writer, http.StatusCreated, orderResp); err != nil {
+	if err := writeJSON(writer, http.StatusCreated, orderResp); err != nil {
 		log.Printf("Error writing response: %v", err)
 		http.Error(writer, "order request failure", http.StatusInternalServerError)
 	}
@@ -83,7 +83,7 @@ func (s *Server) loadUserRoutes(router chi.Router) {
 	router.Post("/", s.newOrderRequest)
 }
 
-func WriteJSON(w http.ResponseWriter, status int, v any) error {
+func writeJSON(w http.ResponseWriter, status int, v any) error {
 	w.Header().Add("Content-Type", "application/json")
 	w.WriteHeader(status)
 
