@@ -15,7 +15,6 @@ import (
 	"time"
 )
 
-// MockMessageBroker is a mock implementation of MessageBroker type
 type MockMessageBroker struct {
 	mu       sync.Mutex
 	messages map[string][]*models.Execution
@@ -38,33 +37,27 @@ func (m *MockMessageBroker) SubscribeToResponsesByBroker(ctx context.Context, ma
 	return nil
 }
 
-// setupTestServer initializes the server and Redis client for testing
 func setupTestServer(t *testing.T) (*rest.Server, *redis_store.Client, *MockMessageBroker, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Initialize mock dependencies
 	msgBroker := NewMockMessageBroker()
 
-	// Set up Redis client
-	redisAddr := "localhost:6379" // Assume Redis is running locally
+	redisAddr := "localhost:6379"
 	redisClient, err := redis_store.NewCacheClient(redisAddr)
 	if err != nil {
 		t.Fatalf("Failed to connect to Redis: %v", err)
 	}
 
-	// Initialize matching engine and server
 	matchingEngine := engine.New(msgBroker, redisClient)
 	server := rest.NewServer(matchingEngine)
 
-	// Cleanup function
 	cleanup := func() {
 		cancel()
-		// Clear Redis keys for cleanup using ClearCachedExecutions
-		keys, err := redisClient.client.Keys(ctx, "execution:*").Result()
+
+		_, keys, err := redisClient.GetExecutions(context.Background())
 		if err == nil && len(keys) > 0 {
 			redisClient.ClearCachedExecutions(ctx, keys)
 		}
-		redisClient.client.Close()
 	}
 
 	return server, redisClient, msgBroker, cleanup
@@ -74,37 +67,32 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 	server, redisClient, msgBroker, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	// Start the server in a goroutine
 	go func() {
 		if err := server.Start(); err != nil && err.Error() != "http: Server closed" {
 			t.Errorf("Server failed to start: %v", err)
 		}
 	}()
 
-	// Allow server to start
 	time.Sleep(100 * time.Millisecond)
 
 	client := &http.Client{}
 	baseURL := "http://localhost:3000"
 
-	// Run test scenarios
 	t.Run("LimitOrderBuySellMatch", testLimitOrderBuySellMatch(client, baseURL, redisClient, msgBroker))
 	t.Run("MarketOrderBuyWithSellLimit", testMarketOrderBuyWithSellLimit(client, baseURL, redisClient, msgBroker))
 	t.Run("MarketOrderSellWithBuyLimit", testMarketOrderSellWithBuyLimit(client, baseURL, redisClient, msgBroker))
 	t.Run("CancelOrder", testCancelOrder(client, baseURL, redisClient, msgBroker))
 	t.Run("InvalidOrder", testInvalidOrder(client, baseURL, redisClient, msgBroker))
 
-	// Wait briefly to ensure all executions are written
 	time.Sleep(100 * time.Millisecond)
 }
 
 func testLimitOrderBuySellMatch(client *http.Client, baseURL string, redisClient *redis_store.Client, msgBroker *MockMessageBroker) func(t *testing.T) {
 	return func(t *testing.T) {
-		symbol := "BTCUSD"
+		symbol := "BTC-USD"
 		clientID1 := uuid.New().String()
 		clientID2 := uuid.New().String()
 
-		// Place buy limit order
 		buyOrder := models.Order{
 			ClientID: clientID1,
 			Symbol:   symbol,
@@ -123,7 +111,6 @@ func testLimitOrderBuySellMatch(client *http.Client, baseURL string, redisClient
 			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
 		}
 
-		// Place sell limit order to match
 		sellOrder := models.Order{
 			ClientID: clientID2,
 			Symbol:   symbol,
@@ -142,9 +129,8 @@ func testLimitOrderBuySellMatch(client *http.Client, baseURL string, redisClient
 			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
 		}
 
-		// Verify executions in Redis
 		time.Sleep(50 * time.Millisecond) // Wait for Redis writes
-		trades, keys, err := redisClient.GetExecutions(context.Background())
+		trades, _, err := redisClient.GetExecutions(context.Background())
 		if err != nil {
 			t.Fatalf("Failed to get executions from Redis: %v", err)
 		}
@@ -177,7 +163,6 @@ func testMarketOrderBuyWithSellLimit(client *http.Client, baseURL string, redisC
 		clientID1 := uuid.New().String()
 		clientID2 := uuid.New().String()
 
-		// Place sell limit order
 		sellOrder := models.Order{
 			ClientID: clientID1,
 			Symbol:   symbol,
@@ -196,7 +181,6 @@ func testMarketOrderBuyWithSellLimit(client *http.Client, baseURL string, redisC
 			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
 		}
 
-		// Place buy market order
 		buyOrder := models.Order{
 			ClientID: clientID2,
 			Symbol:   symbol,
@@ -214,9 +198,8 @@ func testMarketOrderBuyWithSellLimit(client *http.Client, baseURL string, redisC
 			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
 		}
 
-		// Verify executions in Redis
-		time.Sleep(50 * time.Millisecond) // Wait for Redis writes
-		trades, keys, err := redisClient.GetExecutions(context.Background())
+		time.Sleep(50 * time.Millisecond)
+		trades, _, err := redisClient.GetExecutions(context.Background())
 		if err != nil {
 			t.Fatalf("Failed to get executions from Redis: %v", err)
 		}
@@ -253,11 +236,10 @@ func testMarketOrderBuyWithSellLimit(client *http.Client, baseURL string, redisC
 
 func testMarketOrderSellWithBuyLimit(client *http.Client, baseURL string, redisClient *redis_store.Client, msgBroker *MockMessageBroker) func(t *testing.T) {
 	return func(t *testing.T) {
-		symbol := "BTCUSD"
+		symbol := "BTC-USD"
 		clientID1 := uuid.New().String()
 		clientID2 := uuid.New().String()
 
-		// Place buy limit order
 		buyOrder := models.Order{
 			ClientID: clientID1,
 			Symbol:   symbol,
@@ -276,7 +258,6 @@ func testMarketOrderSellWithBuyLimit(client *http.Client, baseURL string, redisC
 			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
 		}
 
-		// Place sell market order
 		sellOrder := models.Order{
 			ClientID: clientID2,
 			Symbol:   symbol,
@@ -294,9 +275,8 @@ func testMarketOrderSellWithBuyLimit(client *http.Client, baseURL string, redisC
 			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
 		}
 
-		// Verify executions in Redis
-		time.Sleep(50 * time.Millisecond) // Wait for Redis writes
-		trades, keys, err := redisClient.GetExecutions(context.Background())
+		time.Sleep(50 * time.Millisecond)
+		trades, _, err := redisClient.GetExecutions(context.Background())
 		if err != nil {
 			t.Fatalf("Failed to get executions from Redis: %v", err)
 		}
@@ -333,15 +313,14 @@ func testMarketOrderSellWithBuyLimit(client *http.Client, baseURL string, redisC
 
 func testCancelOrder(client *http.Client, baseURL string, redisClient *redis_store.Client, msgBroker *MockMessageBroker) func(t *testing.T) {
 	return func(t *testing.T) {
-		symbol := "BTCUSD"
+		symbol := "BTC-USD"
 		clientID := uuid.New().String()
 
-		// Place buy limit order
 		buyOrder := models.Order{
 			ClientID: clientID,
 			Symbol:   symbol,
-			Side:     models.BuyOrder,
-			Price:    50000.0,
+			Side:     models.SellOrder,
+			Price:    100000.0,
 			Quantity: 10,
 			ReqType:  models.NewLimitOrder,
 		}
@@ -355,7 +334,6 @@ func testCancelOrder(client *http.Client, baseURL string, redisClient *redis_sto
 			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
 		}
 
-		// Cancel the order
 		cancelOrder := models.Order{
 			ClientID: clientID,
 			Symbol:   symbol,
@@ -371,9 +349,8 @@ func testCancelOrder(client *http.Client, baseURL string, redisClient *redis_sto
 			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
 		}
 
-		// Verify cancellation in Redis
-		time.Sleep(50 * time.Millisecond) // Wait for Redis writes
-		trades, keys, err := redisClient.GetExecutions(context.Background())
+		time.Sleep(50 * time.Millisecond)
+		trades, _, err := redisClient.GetExecutions(context.Background())
 		if err != nil {
 			t.Fatalf("Failed to get executions from Redis: %v", err)
 		}
@@ -402,10 +379,9 @@ func testCancelOrder(client *http.Client, baseURL string, redisClient *redis_sto
 
 func testInvalidOrder(client *http.Client, baseURL string, redisClient *redis_store.Client, msgBroker *MockMessageBroker) func(t *testing.T) {
 	return func(t *testing.T) {
-		symbol := "BTCUSD"
+		symbol := "BTC-USD"
 		clientID := uuid.New().String()
 
-		// Place invalid order (negative quantity)
 		invalidOrder := models.Order{
 			ClientID: clientID,
 			Symbol:   symbol,
@@ -424,9 +400,8 @@ func testInvalidOrder(client *http.Client, baseURL string, redisClient *redis_st
 			t.Errorf("Expected status %d, got %d", http.StatusInternalServerError, resp.StatusCode)
 		}
 
-		// Verify no executions in Redis
-		time.Sleep(50 * time.Millisecond) // Wait for Redis writes
-		trades, keys, err := redisClient.GetExecutions(context.Background())
+		time.Sleep(50 * time.Millisecond)
+		trades, _, err := redisClient.GetExecutions(context.Background())
 		if err != nil {
 			t.Fatalf("Failed to get executions from Redis: %v", err)
 		}
