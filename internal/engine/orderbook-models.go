@@ -64,7 +64,7 @@ func newOrderBook(market string) *OrderBook {
 func (ob *OrderBook) getOBContainers(side models.OrderSide) (PriceToOrderMap, *rbt.Tree) {
 	switch side {
 	case models.BuyOrder:
-		return ob.sellOrderContainers.getContainers()
+		return ob.buyOrderContainers.getContainers()
 	case models.SellOrder:
 		return ob.sellOrderContainers.getContainers()
 
