@@ -160,7 +160,7 @@ func (ob *OrderBook) removeOrder(order models.Order) error {
 		return fmt.Errorf("order: %s doesn't exist", order.ID)
 	}
 
-	orderList, priceList := ob.getOBContainers(order.Side)
+	orderList, priceList := ob.getOBContainers(orderInfo.Value().Side)
 
 	price := orderInfo.Value().Price
 	bucket := orderList[price]
