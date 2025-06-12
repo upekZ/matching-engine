@@ -2,8 +2,6 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
-	"sync"
 	"testing"
 	"time"
 
@@ -15,230 +13,241 @@ type MockCacheStore struct {
 	savedTrades []*models.Execution
 }
 
-func (m *MockCacheStore) SaveTrades(trades []*models.Execution) error {
-	m.savedTrades = append(m.savedTrades, trades...)
+func (m *MockCacheStore) SaveTrades(trade *models.Execution) error {
+	m.savedTrades = append(m.savedTrades, trade)
 	return nil
 }
 
 type MockMessageBroker struct {
-	publishedData map[string][]byte
-	responseChan  chan models.ExecutionReport
+	publishedExecs []*models.Execution
 }
 
-func (m *MockMessageBroker) PublishOrderResponse(ctx context.Context, market string, data []byte) error {
-	if m.publishedData == nil {
-		m.publishedData = make(map[string][]byte)
-	}
-	m.publishedData[market] = data
+func (m *MockMessageBroker) PublishOrderResponse(ctx context.Context, market string, execs []*models.Execution) error {
+	m.publishedExecs = append(m.publishedExecs, execs...)
 	return nil
 }
 
 func (m *MockMessageBroker) SubscribeToResponsesByBroker(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error {
-	go func() {
-		for report := range m.responseChan {
-			responseChannel <- report
-		}
-	}()
 	return nil
 }
 
-func TestEngine_AddNewRequest(t *testing.T) {
-	cache := &MockCacheStore{}
-	broker := &MockMessageBroker{responseChan: make(chan models.ExecutionReport, 10)}
-	engine := New(broker, cache)
-
-	order := &models.Order{
-		ClientID: "client1",
-		Symbol:   "BTC-USD",
-		Side:     models.BuyOrder,
-		Price:    50000.0,
-		Quantity: 100,
-		ReqType:  models.NewLimitOrder,
-	}
-
-	result := engine.AddNewRequest(order)
-
-	assert.Equal(t, order.ClientID, result.ClientID)
-	assert.Equal(t, order.Symbol, result.Symbol)
-	assert.Equal(t, order.Side, result.Side)
-	assert.Equal(t, order.Price, result.Price)
-	assert.Equal(t, order.Quantity, result.Quantity)
-	assert.Equal(t, order.ReqType, result.ReqType)
-
-	_, exists := engine.orderBooks.Load("BTC-USD")
-	assert.True(t, exists, "Order book for BTC-USD should exist")
-}
-
-func TestEngine_ProcessRequest_NewOrder(t *testing.T) {
-	cache := &MockCacheStore{}
-	broker := &MockMessageBroker{responseChan: make(chan models.ExecutionReport, 10)}
-	engine := New(broker, cache)
-
-	order := &models.Order{
-		ClientID: "client1",
-		Symbol:   "BTC-USD",
-		Side:     models.BuyOrder,
-		Price:    50000.0,
-		Quantity: 100,
-		ReqType:  models.NewLimitOrder,
-	}
-
-	channel := engine.addNewSymbol("BTC-USD")
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		engine.processRequest(order, channel)
-	}()
-
-	wg.Wait()
-
-	book, _ := engine.orderBooks.Load("BTC-USD")
-	ob := book.(*OrderBook)
-	priceMap, _ := ob.getOBContainers(models.BuyOrder)
-	assert.NotNil(t, priceMap[50000.0], "Order should be added to order book")
-}
-
-func TestEngine_ProcessRequest_CancelOrder(t *testing.T) {
-	cache := &MockCacheStore{}
-	broker := &MockMessageBroker{responseChan: make(chan models.ExecutionReport, 10)}
-	engine := New(broker, cache)
-
-	newOrder := &models.Order{
-		ClientID: "client1",
-		Symbol:   "BTC-USD",
-		Side:     models.BuyOrder,
-		Price:    50000.0,
-		Quantity: 100,
-		ReqType:  models.NewLimitOrder,
-	}
-	engine.AddNewRequest(newOrder)
-
-	time.Sleep(50 * time.Millisecond)
-
-	cancelOrder := &models.Order{
-		ClientID: "client1",
-		Symbol:   "BTC-USD",
-		Side:     models.BuyOrder,
-		Price:    50000.0,
-		Quantity: 100,
-		ReqType:  models.CancelOrder,
-	}
-	channel := engine.addNewSymbol("BTC-USD")
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		engine.processRequest(cancelOrder, channel)
-	}()
-
-	wg.Wait()
-
-	book, _ := engine.orderBooks.Load("BTC-USD")
-	ob := book.(*OrderBook)
-	_, exists := ob.ClientIDs["client1"]
-	assert.False(t, exists, "Order should be removed from ClientIDs")
-}
-
-func TestOrderBook_MatchOrder(t *testing.T) {
+func TestNewOrderBook(t *testing.T) {
 	ob := NewOrderBook("BTC-USD")
+	assert.NotNil(t, ob, "OrderBook should not be nil")
+	assert.Equal(t, "BTC-USD", ob.market, "Market should be set correctly")
+	assert.NotNil(t, ob.SellOrderContainers, "SellOrderContainers should not be nil")
+	assert.NotNil(t, ob.BuyOrderContainers, "BuyOrderContainers should not be nil")
+	assert.NotNil(t, ob.StopSellOrderContainers, "StopSellOrderContainers should not be nil")
+	assert.NotNil(t, ob.StopBuyOrderContainers, "StopBuyOrderContainers should not be nil")
+	assert.NotNil(t, ob.OrderIndex, "OrderIndex should not be nil")
+	assert.NotNil(t, ob.ClientIDs, "ClientIDs should not be nil")
+}
 
-	buyOrder := models.AddNewLimitReq("client1", "BTC-USD", models.BuyOrder, 50000.0, 100)
+func TestNewStopSellContainers(t *testing.T) {
+	containers := NewStopSellContainers()
+	assert.NotNil(t, containers, "StopSellOrders should not be nil")
+	assert.NotNil(t, containers.OrdersByTriggerPrice, "OrdersByTriggerPrice should not be nil")
+	assert.NotNil(t, containers.OrderedTriggerPrices, "OrderedTriggerPrices should not be nil")
+	assert.Equal(t, 0, len(containers.OrdersByTriggerPrice), "OrdersByTriggerPrice should be empty")
+	assert.Equal(t, 0, containers.OrderedTriggerPrices.Size(), "OrderedTriggerPrices should be empty")
+}
 
-	sellOrder := models.AddNewLimitReq("client2", "BTC-USD", models.SellOrder, 50000.0, 100)
+func TestNewStopBuyContainers(t *testing.T) {
+	containers := NewStopBuyContainers()
+	assert.NotNil(t, containers, "StopBuyOrders should not be nil")
+	assert.NotNil(t, containers.OrdersByTriggerPrice, "OrdersByTriggerPrice should not be nil")
+	assert.NotNil(t, containers.OrderedTriggerPrices, "OrderedTriggerPrices should not be nil")
+	assert.Equal(t, 0, len(containers.OrdersByTriggerPrice), "OrdersByTriggerPrice should be empty")
+	assert.Equal(t, 0, containers.OrderedTriggerPrices.Size(), "OrderedTriggerPrices should be empty")
+}
+
+func TestEngineAddNewLimitOrder(t *testing.T) {
+	cache := &MockCacheStore{}
+	broker := &MockMessageBroker{}
+	engine := New(broker, cache)
+
+	order := &models.Order{
+		ClientID:  "client1",
+		Symbol:    "BTC-USD",
+		Side:      models.BuyOrder,
+		Price:     50000.0,
+		Quantity:  10,
+		ReqType:   models.NewLimitOrder,
+		Timestamp: time.Now().Unix(),
+	}
+
+	engine.AddNewRequest(order)
+
+	// Wait briefly to allow goroutine to process
+	time.Sleep(100 * time.Millisecond)
+
+	book, exists := engine.orderBooks.Load("BTC-USD")
+	assert.True(t, exists, "Order book for BTC-USD should exist")
+	ob := book.(*OrderBook)
+
+	priceMap, _ := ob.getOBContainers(models.BuyOrder)
+	assert.NotNil(t, priceMap[50000.0], "Order should be added to price map")
+	assert.Equal(t, 1, len(ob.ClientIDs), "ClientIDs should contain one order")
+}
+
+func TestOrderBookAddBuyRequest(t *testing.T) {
+	ob := NewOrderBook("BTC-USD")
+	cache := &MockCacheStore{}
+	broker := &MockMessageBroker{}
+
+	order := models.AddNewLimitReq(&models.BaseParams{
+		ClientID:  "client1",
+		Symbol:    "BTC-USD",
+		MsgBroker: broker,
+		Store:     cache,
+	}, models.BuyOrder, 50000.0, 10)
+
+	ob.AddBuyRequest(order)
+
+	priceMap, priceList := ob.getOBContainers(models.BuyOrder)
+	assert.NotNil(t, priceMap[50000.0], "Order should be added at price 50000")
+	assert.Equal(t, 1, priceList.Size(), "Price list should contain one price")
+	assert.Equal(t, 1, priceMap[50000.0].Len(), "Order list at price should contain one order")
+	assert.Equal(t, models.NewOrderState, order.Status, "Order status should be NewOrderState")
+}
+
+func TestOrderBookMatchOrders(t *testing.T) {
+	ob := NewOrderBook("BTC-USD")
+	cache := &MockCacheStore{}
+	broker := &MockMessageBroker{}
+
+	sellOrder := models.AddNewLimitReq(&models.BaseParams{
+		ClientID:  "client1",
+		Symbol:    "BTC-USD",
+		MsgBroker: broker,
+		Store:     cache,
+	}, models.SellOrder, 50000.0, 10)
+	ob.AddSellRequest(sellOrder)
+
+	buyOrder := models.AddNewLimitReq(&models.BaseParams{
+		ClientID:  "client2",
+		Symbol:    "BTC-USD",
+		MsgBroker: broker,
+		Store:     cache,
+	}, models.BuyOrder, 50000.0, 10)
 	ob.AddBuyRequest(buyOrder)
 
-	ob.AddSellRequest(sellOrder)
-	assert.NoError(t, err)
-	assert.True(t, len(executions) >= 2, "Should have at least new and trade executions")
-
-	var tradeFound bool
-	for _, exec := range executions {
-		if exec.ExecType == models.ExecuteTrade {
-			tradeFound = true
-			assert.Equal(t, 100, exec.LastQty, "Trade quantity should match")
-			assert.Equal(t, 50000.0, exec.LastPx, "Trade price should match")
-		}
-	}
-	assert.True(t, tradeFound, "Trade execution should be present")
+	assert.Equal(t, models.Filled, sellOrder.Status, "Sell order should be filled")
+	assert.Equal(t, models.Filled, buyOrder.Status, "Buy order should be filled")
+	assert.Equal(t, 10, buyOrder.FilledQty, "Buy order filled quantity should be 10")
+	assert.Equal(t, 0, buyOrder.AvailableQty, "Buy order available quantity should be 0")
+	assert.Equal(t, 0, len(ob.OrderIndex), "OrderIndex should be empty after matching")
 }
 
-func TestOrderBook_CancelOrder(t *testing.T) {
+func TestOrderBookCancelOrder(t *testing.T) {
 	ob := NewOrderBook("BTC-USD")
-
-	order := models.AddNewLimitReq("client1", "BTC-USD", models.BuyOrder, 50000.0, 100)
-
-	_, err := ob.AddBuyRequest(order)
-	assert.NoError(t, err)
-
-	cancelOrder := models.AddNewLimitReq("client1", "BTC-USD", models.BuyOrder, 50000.0, 100)
-
-	executions, err := ob.CancelOrder(cancelOrder)
-	assert.NoError(t, err)
-	assert.True(t, len(executions) >= 2, "Should have cancel request and cancel executions")
-
-	_, exists := ob.ClientIDs["client1"]
-	assert.False(t, exists, "Order should be removed from ClientIDs")
-}
-
-func TestOrderBook_ProcessExecutionsToReport(t *testing.T) {
-	ob := NewOrderBook("BTC-USD")
-
-	executions := []*models.Execution{
-		{
-			ClOrdID:   "client1",
-			ExecType:  models.ExecuteTrade,
-			OrderQty:  100,
-			Price:     50000.0,
-			LastQty:   100,
-			LastPx:    50000.0,
-			CumQty:    100,
-			LeavesQty: 0,
-		},
-		{
-			ClOrdID:   "client2",
-			ExecType:  models.ExecuteTrade,
-			OrderQty:  100,
-			Price:     50000.0,
-			LastQty:   100,
-			LastPx:    50000.0,
-			CumQty:    100,
-			LeavesQty: 0,
-		},
-	}
-
-	report := ob.ProcessExecutionsToReport(executions)
-	assert.Equal(t, 2, len(report), "Report should contain entries for both clients")
-	assert.Equal(t, 1, len(report["client1"]), "Client1 should have one execution")
-	assert.Equal(t, 1, len(report["client2"]), "Client2 should have one execution")
-}
-
-func TestEngine_PublishExecutions(t *testing.T) {
 	cache := &MockCacheStore{}
-	broker := &MockMessageBroker{responseChan: make(chan models.ExecutionReport, 10)}
-	engine := New(broker, cache)
+	broker := &MockMessageBroker{}
 
-	execReport := models.ExecutionReport{
-		"client1": []*models.Execution{
-			{
-				ClOrdID:   "client1",
-				ExecType:  models.ExecuteTrade,
-				OrderQty:  100,
-				Price:     50000.0,
-				LastQty:   100,
-				LastPx:    50000.0,
-				CumQty:    100,
-				LeavesQty: 0,
-			},
-		},
-	}
+	order := models.AddNewLimitReq(&models.BaseParams{
+		ClientID:  "client1",
+		Symbol:    "BTC-USD",
+		MsgBroker: broker,
+		Store:     cache,
+	}, models.BuyOrder, 50000.0, 10)
+	ob.AddBuyRequest(order)
 
-	err := engine.publishExecutions(context.Background(), "BTC-USD", execReport)
-	assert.NoError(t, err)
-	assert.NotNil(t, broker.publishedData["BTC-USD"], "Data should be published for BTC-USD")
+	cancelOrder := models.AddCancelReq(&models.BaseParams{
+		ClientID:  "client1",
+		Symbol:    "BTC-USD",
+		MsgBroker: broker,
+		Store:     cache,
+	})
+	ob.CancelOrder(cancelOrder)
 
-	var publishedReport models.ExecutionReport
-	err = json.Unmarshal(broker.publishedData["BTC-USD"], &publishedReport)
-	assert.NoError(t, err)
-	assert.Equal(t, len(execReport), len(publishedReport), "Published report should match input")
+	assert.Equal(t, models.Cancelled, order.Status, "Order should be cancelled")
+	assert.Equal(t, 0, len(ob.OrderIndex), "OrderIndex should be empty")
+	assert.Equal(t, 0, len(ob.ClientIDs), "ClientIDs should be empty")
+}
+
+func TestOrderBookValidateReq(t *testing.T) {
+	ob := NewOrderBook("BTC-USD")
+	cache := &MockCacheStore{}
+	broker := &MockMessageBroker{}
+
+	order1 := models.AddNewLimitReq(&models.BaseParams{
+		ClientID:  "client1",
+		Symbol:    "BTC-USD",
+		MsgBroker: broker,
+		Store:     cache,
+	}, models.BuyOrder, 50000.0, 10)
+	ob.AddBuyRequest(order1)
+
+	order2 := models.AddNewLimitReq(&models.BaseParams{
+		ClientID:  "client1",
+		Symbol:    "BTC-USD",
+		MsgBroker: broker,
+		Store:     cache,
+	}, models.BuyOrder, 50000.0, 10)
+	err := ob.validateReq(order2)
+	assert.Error(t, err, "Should return error for duplicate ClientID")
+	assert.Contains(t, err.Error(), "duplicate order id", "Error message should mention duplicate order id")
+}
+
+func TestStopOrderHandling(t *testing.T) {
+	ob := NewOrderBook("BTC-USD")
+	cache := &MockCacheStore{}
+	broker := &MockMessageBroker{}
+
+	stopBuyOrder := models.AddNewStopReq(&models.BaseParams{
+		ClientID:  "client1",
+		Symbol:    "BTC-USD",
+		MsgBroker: broker,
+		Store:     cache,
+	}, models.BuyOrder, 51000.0, 10)
+
+	priceMap, priceList := ob.StopBuyOrderContainers.getStopContainers()
+	priceMap[stopBuyOrder.StopPx] = models.NewOrderList()
+	priceList.Put(stopBuyOrder.StopPx, true)
+	priceMap[stopBuyOrder.StopPx].Push(stopBuyOrder)
+
+	assert.Equal(t, 1, priceList.Size(), "Stop buy price list should contain one price")
+	assert.Equal(t, 1, priceMap[51000.0].Len(), "Stop buy order list should contain one order")
+
+	stopSellOrder := models.AddNewStopReq(&models.BaseParams{
+		ClientID:  "client2",
+		Symbol:    "BTC-USD",
+		MsgBroker: broker,
+		Store:     cache,
+	}, models.SellOrder, 49000.0, 10)
+
+	priceMap, priceList = ob.StopSellOrderContainers.getStopContainers()
+	priceMap[stopSellOrder.StopPx] = models.NewOrderList()
+	priceList.Put(stopSellOrder.StopPx, true)
+	priceMap[stopSellOrder.StopPx].Push(stopSellOrder)
+
+	assert.Equal(t, 1, priceList.Size(), "Stop sell price list should contain one price")
+	assert.Equal(t, 1, priceMap[49000.0].Len(), "Stop sell order list should contain one order")
+}
+
+func TestOrderValidation(t *testing.T) {
+	cache := &MockCacheStore{}
+	broker := &MockMessageBroker{}
+
+	order := models.AddNewLimitReq(&models.BaseParams{
+		ClientID:  "client1",
+		Symbol:    "BTC-USD",
+		MsgBroker: broker,
+		Store:     cache,
+	}, models.BuyOrder, -100.0, 10)
+
+	err := order.ValidateReq()
+	assert.Error(t, err, "Should return error for negative price")
+	assert.Contains(t, err.Error(), "invalid price entry", "Error message should mention invalid price")
+
+	order = models.AddNewLimitReq(&models.BaseParams{
+		ClientID:  "client1",
+		Symbol:    "BTC-USD",
+		MsgBroker: broker,
+		Store:     cache,
+	}, models.BuyOrder, 50000.0, -10)
+
+	err = order.ValidateReq()
+	assert.Error(t, err, "Should return error for negative quantity")
+	assert.Contains(t, err.Error(), "invalid quantity entry", "Error message should mention invalid quantity")
 }
