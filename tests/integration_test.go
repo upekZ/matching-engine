@@ -90,6 +90,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 	t.Run("LimitOrderBuySellMatch", testLimitOrderBuySellMatch(client, baseURL, redisClient))
 	t.Run("MarketOrderBuyWithSellLimit", testMarketOrderBuyWithSellLimit(client, baseURL, redisClient))
 	t.Run("MarketOrderSellWithBuyLimit", testMarketOrderSellWithBuyLimit(client, baseURL, redisClient))
+	clean()
 	t.Run("CancelOrder", testCancelOrder(client, baseURL, redisClient))
 	t.Run("InvalidOrder", testInvalidOrder(client, baseURL, redisClient))
 	clean()
@@ -246,6 +247,18 @@ func testMarketOrderBuyWithSellLimit(client *http.Client, baseURL string, redisC
 		if count != 1 {
 			t.Errorf("Expected 1 trade execution for buy market order, got %d", count)
 		}
+
+		cleanupOrder := models.Order{
+			ClientID: "testID1",
+			Symbol:   symbol,
+			Side:     models.BuyOrder,
+			Quantity: 5,
+			ReqType:  models.NewMarketOrder,
+		}
+		testBody, _ := json.Marshal(cleanupOrder)
+		resp, err = client.Post(baseURL+"/orders", "application/json", bytes.NewBuffer(testBody))
+
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 
@@ -260,7 +273,7 @@ func testMarketOrderSellWithBuyLimit(client *http.Client, baseURL string, redisC
 			Symbol:   symbol,
 			Side:     models.BuyOrder,
 			Price:    49000.0,
-			Quantity: 20,
+			Quantity: 15,
 			ReqType:  models.NewLimitOrder,
 		}
 		buyBody, _ := json.Marshal(buyOrder)
@@ -290,6 +303,16 @@ func testMarketOrderSellWithBuyLimit(client *http.Client, baseURL string, redisC
 			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
 		}
 
+		cleanupOrder := models.Order{
+			ClientID: "testID2",
+			Symbol:   symbol,
+			Side:     models.SellOrder,
+			Quantity: 5,
+			ReqType:  models.NewMarketOrder,
+		}
+		cleanupBody, _ := json.Marshal(cleanupOrder)
+		resp, err = client.Post(baseURL+"/orders", "application/json", bytes.NewBuffer(cleanupBody))
+
 		time.Sleep(50 * time.Millisecond)
 		trades, _, err := redisClient.GetExecutions(context.Background())
 		if err != nil {
@@ -311,10 +334,10 @@ func testMarketOrderSellWithBuyLimit(client *http.Client, baseURL string, redisC
 				}
 				count++
 			} else if trade.ExecType == models.ExecuteTrade && trade.ClOrdID == clientID1 {
-				if trade.OrdStatus != models.PartiallyFilled {
-					t.Errorf("Expected ord_status %s, got %s for cl_ord_id %s", models.PartiallyFilled, trade.OrdStatus, trade.ClOrdID)
+				if trade.OrdStatus != models.Filled {
+					t.Errorf("Expected ord_status %s, got %s for cl_ord_id %s", models.Filled, trade.OrdStatus, trade.ClOrdID)
 				}
-				if trade.OrderQty != 20 || trade.LastQty != 15 || trade.CumQty != 15 || trade.LeavesQty != 5 {
+				if trade.OrderQty != 15 || trade.LastQty != 15 || trade.CumQty != 15 || trade.LeavesQty != 0 {
 					t.Errorf("Unexpected execution for cl_ord_id %s: order_qty=%d, last_qty=%d, cum_qty=%d, leaves_qty=%d",
 						trade.ClOrdID, trade.OrderQty, trade.LastQty, trade.CumQty, trade.LeavesQty)
 				}
@@ -502,6 +525,19 @@ func testPartialMatching(client *http.Client, baseURL string, redisClient *redis
 		if count != 2 {
 			t.Errorf("Expected 2 trade execution, got %d", count)
 		}
+
+		cleanupOrder := models.Order{
+			ClientID: "testID3",
+			Symbol:   symbol,
+			Side:     models.BuyOrder,
+			Price:    51000.0,
+			Quantity: 7,
+			ReqType:  models.NewLimitOrder,
+		}
+		cleanerBody, _ := json.Marshal(cleanupOrder)
+		resp, err = client.Post(baseURL+"/orders", "application/json", bytes.NewBuffer(cleanerBody))
+
+		time.Sleep(50 * time.Millisecond)
 	}
 
 }
