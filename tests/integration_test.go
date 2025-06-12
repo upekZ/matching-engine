@@ -22,14 +22,16 @@ type MockMessageBroker struct {
 
 func NewMockMessageBroker() *MockMessageBroker {
 	return &MockMessageBroker{
-		messages: make(models.ExecutionReport),
+		messages: make(map[string][]*models.Execution), // Fixed typo: use map instead of models.ExecutionReport directly
 	}
 }
 
 func (m *MockMessageBroker) PublishOrderResponse(ctx context.Context, market string, execs models.ExecutionReport) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.messages = execs
+	for marketKey, executions := range execs {
+		m.messages[marketKey] = append(m.messages[marketKey], executions...)
+	}
 	return nil
 }
 
@@ -83,6 +85,9 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 	t.Run("MarketOrderSellWithBuyLimit", testMarketOrderSellWithBuyLimit(client, baseURL, redisClient, msgBroker))
 	t.Run("CancelOrder", testCancelOrder(client, baseURL, redisClient, msgBroker))
 	t.Run("InvalidOrder", testInvalidOrder(client, baseURL, redisClient, msgBroker))
+	t.Run("PartialMatching", testPartialMatching(client, baseURL, redisClient, msgBroker))
+	t.Run("MatchTwoOrders", testMatchTwoOrders(client, baseURL, redisClient, msgBroker))
+	t.Run("MatchTwoOrdersAndPartialMatch", testMatchTwoOrdersAndPartialMatch(client, baseURL, redisClient, msgBroker))
 
 	time.Sleep(100 * time.Millisecond)
 }
@@ -334,6 +339,8 @@ func testCancelOrder(client *http.Client, baseURL string, redisClient *redis_sto
 			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
 		}
 
+		time.Sleep(100 * time.Millisecond)
+
 		cancelOrder := models.Order{
 			ClientID: clientID,
 			Symbol:   symbol,
@@ -350,23 +357,23 @@ func testCancelOrder(client *http.Client, baseURL string, redisClient *redis_sto
 		}
 
 		time.Sleep(50 * time.Millisecond)
-		trades, _, err := redisClient.GetExecutions(context.Background())
+		executions, _, err := redisClient.GetExecutions(context.Background())
 		if err != nil {
 			t.Fatalf("Failed to get executions from Redis: %v", err)
 		}
-		if len(trades) == 0 {
+		if len(executions) == 0 {
 			t.Errorf("Expected executions in Redis, got none")
 		}
 
 		count := 0
-		for _, trade := range trades {
-			if trade.ExecType == models.ExecuteCancel && trade.ClOrdID == clientID {
-				if trade.OrdStatus != models.Cancelled {
-					t.Errorf("Expected ord_status %s, got %s for cl_ord_id %s", models.Cancelled, trade.OrdStatus, trade.ClOrdID)
+		for _, exec := range executions {
+			if exec.ExecType == models.ExecuteCancel && exec.ClOrdID == clientID {
+				if exec.OrdStatus != models.Cancelled {
+					t.Errorf("Expected ord_status %s, got %s for cl_ord_id %s", models.Cancelled, exec.OrdStatus, exec.ClOrdID)
 				}
-				if trade.OrderQty != 10 || trade.LeavesQty != 10 {
+				if exec.OrderQty != 10 || exec.LeavesQty != 10 {
 					t.Errorf("Unexpected execution for cl_ord_id %s: order_qty=%d, leaves_qty=%d",
-						trade.ClOrdID, trade.OrderQty, trade.LeavesQty)
+						exec.ClOrdID, exec.OrderQty, exec.LeavesQty)
 				}
 				count++
 			}
@@ -409,6 +416,314 @@ func testInvalidOrder(client *http.Client, baseURL string, redisClient *redis_st
 			if trade.ClOrdID == clientID {
 				t.Errorf("Expected no executions for invalid order cl_ord_id %s, got execution", clientID)
 			}
+		}
+	}
+}
+
+func testPartialMatching(client *http.Client, baseURL string, redisClient *redis_store.Client, msgBroker *MockMessageBroker) func(t *testing.T) {
+	return func(t *testing.T) {
+		symbol := "BTC-USD"
+		clientID1 := uuid.New().String()
+		clientID2 := uuid.New().String()
+
+		sellOrder := models.Order{
+			ClientID: clientID1,
+			Symbol:   symbol,
+			Side:     models.SellOrder,
+			Price:    51000.0,
+			Quantity: 15,
+			ReqType:  models.NewLimitOrder,
+		}
+		sellBody, _ := json.Marshal(sellOrder)
+		resp, err := client.Post(baseURL+"/orders", "application/json", bytes.NewBuffer(sellBody))
+		if err != nil {
+			t.Fatalf("Failed to send sell order request: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
+		}
+
+		buyOrder := models.Order{
+			ClientID: clientID2,
+			Symbol:   symbol,
+			Side:     models.BuyOrder,
+			Price:    51000.0,
+			Quantity: 8,
+			ReqType:  models.NewLimitOrder,
+		}
+		buyBody, _ := json.Marshal(buyOrder)
+		resp, err = client.Post(baseURL+"/orders", "application/json", bytes.NewBuffer(buyBody))
+		if err != nil {
+			t.Fatalf("Failed to send buy order request: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
+		}
+
+		time.Sleep(50 * time.Millisecond)
+		trades, _, err := redisClient.GetExecutions(context.Background())
+		if err != nil {
+			t.Fatalf("Failed to get executions from Redis: %v", err)
+		}
+		if len(trades) == 0 {
+			t.Errorf("Expected executions in Redis, got none")
+		}
+
+		count := 0
+		for _, trade := range trades {
+			if trade.ExecType == models.ExecuteTrade {
+				if trade.ClOrdID == clientID2 {
+					if trade.OrdStatus != models.Filled {
+						t.Errorf("Expected buy order to be filled for cl_ord_id %s, got %s", trade.ClOrdID, trade.OrdStatus)
+					}
+					if trade.OrderQty != 8 || trade.LastQty != 8 || trade.CumQty != 8 || trade.LeavesQty != 0 || trade.LastPx != 51000.0 {
+						t.Errorf("Unexpected buy execution for cl_ord_id %s: order_qty=%d, last_qty=%d, cum_qty=%d, leaves_qty=%d, last_px=%f",
+							trade.ClOrdID, trade.OrderQty, trade.LastQty, trade.CumQty, trade.LeavesQty, trade.LastPx)
+					}
+				}
+				if trade.ClOrdID == clientID1 {
+					if trade.OrdStatus != models.PartiallyFilled {
+						t.Errorf("Expected sell order to be partially filled for cl_ord_id %s, got %s", trade.ClOrdID, trade.OrdStatus)
+					}
+					if trade.OrderQty != 15 || trade.LastQty != 8 || trade.CumQty != 8 || trade.LeavesQty != 7 {
+						t.Errorf("Unexpected sell execution for cl_ord_id %s: order_qty=%d, last_qty=%d, cum_qty=%d, leaves_qty=%d",
+							trade.ClOrdID, trade.OrderQty, trade.LastQty, trade.CumQty, trade.LeavesQty)
+					}
+				}
+				count++
+			}
+		}
+		if count != 1 {
+			t.Errorf("Expected 1 trade execution, got %d", count)
+		}
+	}
+}
+
+func testMatchTwoOrders(client *http.Client, baseURL string, redisClient *redis_store.Client, msgBroker *MockMessageBroker) func(t *testing.T) {
+	return func(t *testing.T) {
+		symbol := "BTC-USD"
+		clientID1 := uuid.New().String()
+		clientID2 := uuid.New().String()
+		clientID3 := uuid.New().String()
+
+		sellOrder1 := models.Order{
+			ClientID: clientID1,
+			Symbol:   symbol,
+			Side:     models.SellOrder,
+			Price:    51000.0,
+			Quantity: 10,
+			ReqType:  models.NewLimitOrder,
+		}
+		sellBody1, _ := json.Marshal(sellOrder1)
+		resp, err := client.Post(baseURL+"/orders", "application/json", bytes.NewBuffer(sellBody1))
+		if err != nil {
+			t.Fatalf("Failed to send first sell order request: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
+		}
+
+		sellOrder2 := models.Order{
+			ClientID: clientID2,
+			Symbol:   symbol,
+			Side:     models.SellOrder,
+			Price:    51000.0,
+			Quantity: 10,
+			ReqType:  models.NewLimitOrder,
+		}
+		sellBody2, _ := json.Marshal(sellOrder2)
+		resp, err = client.Post(baseURL+"/orders", "application/json", bytes.NewBuffer(sellBody2))
+		if err != nil {
+			t.Fatalf("Failed to send second sell order request: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
+		}
+
+		buyOrder := models.Order{
+			ClientID: clientID3,
+			Symbol:   symbol,
+			Side:     models.BuyOrder,
+			Quantity: 20,
+			ReqType:  models.NewMarketOrder,
+		}
+		buyBody, _ := json.Marshal(buyOrder)
+		resp, err = client.Post(baseURL+"/orders", "application/json", bytes.NewBuffer(buyBody))
+		if err != nil {
+			t.Fatalf("Failed to send buy market order request: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
+		}
+
+		time.Sleep(50 * time.Millisecond)
+		trades, _, err := redisClient.GetExecutions(context.Background())
+		if err != nil {
+			t.Fatalf("Failed to get executions from Redis: %v", err)
+		}
+		if len(trades) == 0 {
+			t.Errorf("Expected executions in Redis, got none")
+		}
+
+		count := 0
+		for _, trade := range trades {
+			if trade.ExecType == models.ExecuteTrade {
+				if trade.ClOrdID == clientID3 {
+					if trade.OrdStatus != models.Filled {
+						t.Errorf("Expected buy order to be filled for cl_ord_id %s, got %s", trade.ClOrdID, trade.OrdStatus)
+					}
+					if trade.OrderQty != 20 || trade.LastQty != 10 || trade.CumQty != 20 || trade.LeavesQty != 0 || trade.LastPx != 51000.0 {
+						t.Errorf("Unexpected buy execution for cl_ord_id %s: order_qty=%d, last_qty=%d, cum_qty=%d, leaves_qty=%d, last_px=%f",
+							trade.ClOrdID, trade.OrderQty, trade.LastQty, trade.CumQty, trade.LeavesQty, trade.LastPx)
+					}
+				}
+				if trade.ClOrdID == clientID1 || trade.ClOrdID == clientID2 {
+					if trade.OrdStatus != models.Filled {
+						t.Errorf("Expected sell order to be filled for cl_ord_id %s, got %s", trade.ClOrdID, trade.OrdStatus)
+					}
+					if trade.OrderQty != 10 || trade.LastQty != 10 || trade.CumQty != 10 || trade.LeavesQty != 0 {
+						t.Errorf("Unexpected sell execution for cl_ord_id %s: order_qty=%d, last_qty=%d, cum_qty=%d, leaves_qty=%d",
+							trade.ClOrdID, trade.OrderQty, trade.LastQty, trade.CumQty, trade.LeavesQty)
+					}
+				}
+				count++
+			}
+		}
+		if count != 3 {
+			t.Errorf("Expected 3 trade executions (2 sells, 1 buy), got %d", count)
+		}
+	}
+}
+
+func testMatchTwoOrdersAndPartialMatch(client *http.Client, baseURL string, redisClient *redis_store.Client, msgBroker *MockMessageBroker) func(t *testing.T) {
+	return func(t *testing.T) {
+		symbol := "BTC-USD"
+		clientID1 := uuid.New().String()
+		clientID2 := uuid.New().String()
+		clientID3 := uuid.New().String()
+		clientID4 := uuid.New().String()
+
+		sellOrder1 := models.Order{
+			ClientID: clientID1,
+			Symbol:   symbol,
+			Side:     models.SellOrder,
+			Price:    51000.0,
+			Quantity: 10,
+			ReqType:  models.NewLimitOrder,
+		}
+		sellBody1, _ := json.Marshal(sellOrder1)
+		resp, err := client.Post(baseURL+"/orders", "application/json", bytes.NewBuffer(sellBody1))
+		if err != nil {
+			t.Fatalf("Failed to send first sell order request: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
+		}
+
+		sellOrder2 := models.Order{
+			ClientID: clientID2,
+			Symbol:   symbol,
+			Side:     models.SellOrder,
+			Price:    51000.0,
+			Quantity: 10,
+			ReqType:  models.NewLimitOrder,
+		}
+		sellBody2, _ := json.Marshal(sellOrder2)
+		resp, err = client.Post(baseURL+"/orders", "application/json", bytes.NewBuffer(sellBody2))
+		if err != nil {
+			t.Fatalf("Failed to send second sell order request: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
+		}
+
+		sellOrder3 := models.Order{
+			ClientID: clientID3,
+			Symbol:   symbol,
+			Side:     models.SellOrder,
+			Price:    51000.0,
+			Quantity: 20,
+			ReqType:  models.NewLimitOrder,
+		}
+		sellBody3, _ := json.Marshal(sellOrder3)
+		resp, err = client.Post(baseURL+"/orders", "application/json", bytes.NewBuffer(sellBody3))
+		if err != nil {
+			t.Fatalf("Failed to send third sell order request: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
+		}
+
+		buyOrder := models.Order{
+			ClientID: clientID4,
+			Symbol:   symbol,
+			Side:     models.BuyOrder,
+			Quantity: 35,
+			ReqType:  models.NewMarketOrder,
+		}
+		buyBody, _ := json.Marshal(buyOrder)
+		resp, err = client.Post(baseURL+"/orders", "application/json", bytes.NewBuffer(buyBody))
+		if err != nil {
+			t.Fatalf("Failed to send buy market order request: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
+		}
+
+		// Verify executions in Redis
+		time.Sleep(50 * time.Millisecond) // Wait for Redis writes
+		trades, _, err := redisClient.GetExecutions(context.Background())
+		if err != nil {
+			t.Fatalf("Failed to get executions from Redis: %v", err)
+		}
+		if len(trades) == 0 {
+			t.Errorf("Expected executions in Redis, got none")
+		}
+
+		count := 0
+		for _, trade := range trades {
+			if trade.ExecType == models.ExecuteTrade {
+				if trade.ClOrdID == clientID4 {
+					if trade.OrdStatus != models.Filled {
+						t.Errorf("Expected buy order to be filled for cl_ord_id %s, got %s", trade.ClOrdID, trade.OrdStatus)
+					}
+					if trade.OrderQty != 35 || trade.LastQty != 10 || trade.CumQty != 35 || trade.LeavesQty != 0 || trade.LastPx != 51000.0 {
+						t.Errorf("Unexpected buy execution for cl_ord_id %s: order_qty=%d, last_qty=%d, cum_qty=%d, leaves_qty=%d, last_px=%f",
+							trade.ClOrdID, trade.OrderQty, trade.LastQty, trade.CumQty, trade.LeavesQty, trade.LastPx)
+					}
+				}
+				if trade.ClOrdID == clientID1 || trade.ClOrdID == clientID2 {
+					if trade.OrdStatus != models.Filled {
+						t.Errorf("Expected first/second sell order to be filled for cl_ord_id %s, got %s", trade.ClOrdID, trade.OrdStatus)
+					}
+					if trade.OrderQty != 10 || trade.LastQty != 10 || trade.CumQty != 10 || trade.LeavesQty != 0 {
+						t.Errorf("Unexpected sell execution for cl_ord_id %s: order_qty=%d, last_qty=%d, cum_qty=%d, leaves_qty=%d",
+							trade.ClOrdID, trade.OrderQty, trade.LastQty, trade.CumQty, trade.LeavesQty)
+					}
+				}
+				if trade.ClOrdID == clientID3 {
+					if trade.OrdStatus != models.PartiallyFilled {
+						t.Errorf("Expected third sell order to be partially filled for cl_ord_id %s, got %s", trade.ClOrdID, trade.OrdStatus)
+					}
+					if trade.OrderQty != 20 || trade.LastQty != 15 || trade.CumQty != 15 || trade.LeavesQty != 5 {
+						t.Errorf("Unexpected sell execution for cl_ord_id %s: order_qty=%d, last_qty=%d, cum_qty=%d, leaves_qty=%d",
+							trade.ClOrdID, trade.OrderQty, trade.LastQty, trade.CumQty, trade.LeavesQty)
+					}
+				}
+				count++
+			}
+		}
+		if count != 4 {
+			t.Errorf("Expected 4 trade executions (1 buy, 2 full sells, 1 partial sell), got %d", count)
 		}
 	}
 }
