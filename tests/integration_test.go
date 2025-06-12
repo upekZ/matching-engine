@@ -87,11 +87,11 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 	client := &http.Client{}
 	baseURL := "http://localhost:3000"
 
-	//t.Run("LimitOrderBuySellMatch", testLimitOrderBuySellMatch(client, baseURL, redisClient))
-	//t.Run("MarketOrderBuyWithSellLimit", testMarketOrderBuyWithSellLimit(client, baseURL, redisClient))
-	//t.Run("MarketOrderSellWithBuyLimit", testMarketOrderSellWithBuyLimit(client, baseURL, redisClient))
-	//t.Run("CancelOrder", testCancelOrder(client, baseURL, redisClient))
-	//t.Run("InvalidOrder", testInvalidOrder(client, baseURL, redisClient))
+	t.Run("LimitOrderBuySellMatch", testLimitOrderBuySellMatch(client, baseURL, redisClient))
+	t.Run("MarketOrderBuyWithSellLimit", testMarketOrderBuyWithSellLimit(client, baseURL, redisClient))
+	t.Run("MarketOrderSellWithBuyLimit", testMarketOrderSellWithBuyLimit(client, baseURL, redisClient))
+	t.Run("CancelOrder", testCancelOrder(client, baseURL, redisClient))
+	t.Run("InvalidOrder", testInvalidOrder(client, baseURL, redisClient))
 	clean()
 	t.Run("PartialMatching", testPartialMatching(client, baseURL, redisClient))
 	clean()
