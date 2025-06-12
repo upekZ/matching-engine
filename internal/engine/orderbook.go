@@ -33,11 +33,11 @@ func (ob *OrderBook) processRequest(order *models.Order, returnCmp models.Compar
 }
 
 func (ob *OrderBook) addBuyRequest(order *models.Order) {
-	ob.processRequest(order, models.Lesser)
+	ob.processRequest(order, models.Greater)
 }
 
 func (ob *OrderBook) addSellRequest(order *models.Order) {
-	ob.processRequest(order, models.Greater)
+	ob.processRequest(order, models.Lesser)
 }
 
 func (ob *OrderBook) cancelOrder(order *models.Order) {
@@ -46,7 +46,7 @@ func (ob *OrderBook) cancelOrder(order *models.Order) {
 
 	order.ExecuteCancelReq()
 
-	if err := ob.removeOrder(*order); err != nil {
+	if err := ob.removeOrder(order); err != nil {
 		order.ExecuteReject()
 		log.Printf("Could not cancel order: %v", err)
 		return
@@ -77,7 +77,7 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 
 	_, priceList := ob.getOBContainers(order.GetOppositeOrderType())
 
-	filledOrders := make([]models.Order, 0, 1)
+	filledOrders := make([]*models.Order, 0, 1)
 
 	defer func() {
 		//filled orders are removed from Order-book at the end after matching completion
@@ -101,9 +101,9 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 	}
 }
 
-func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) []models.Order {
+func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) []*models.Order {
 
-	filledOrders := make([]models.Order, 0, 1)
+	filledOrders := make([]*models.Order, 0, 1)
 
 	ordersByPrice, _ := ob.getOBContainers(order.GetOppositeOrderType())
 
@@ -118,7 +118,7 @@ func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) []mo
 		tradeQty := 0
 
 		if bookOrder.Quantity <= order.AvailableQty {
-			filledOrders = append(filledOrders, *bookOrder) //only add orders in order-book as filled orders
+			filledOrders = append(filledOrders, bookOrder) //only add orders in order-book as filled orders
 			tradeQty = bookOrder.Quantity
 		} else {
 			tradeQty = order.AvailableQty
@@ -145,7 +145,7 @@ func (ob *OrderBook) validateReqInOB(order *models.Order) error {
 	return nil
 }
 
-func (ob *OrderBook) removeOrder(order models.Order) error {
+func (ob *OrderBook) removeOrder(order *models.Order) error {
 
 	orderID, ok := ob.clientIDs[order.ClientID]
 	if !ok {
