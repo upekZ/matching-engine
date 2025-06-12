@@ -76,8 +76,10 @@ func (engine *DbEngine) startExecWriter() {
 
 		case <-ticker.C:
 			executions, keys, err := engine.cacheClient.GetExecutions(context.Background())
-			if err == nil {
+			if err == nil && len(keys) > 0 {
 				engine.executionQueue <- executions
+			} else {
+				continue
 			}
 
 			log.Printf("flushing data.. writing %d executions to db", len(executions))

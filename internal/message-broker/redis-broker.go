@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/redis/go-redis/v9"
 	"github.com/upekZ/matching-engine/internal/models"
 	"google.golang.org/grpc/codes"
@@ -23,7 +24,13 @@ func NewMessageBroker(addr string) (*Client, error) {
 	return &Client{client: client}, nil
 }
 
-func (c *Client) PublishOrderResponse(ctx context.Context, market string, data []byte) error {
+func (c *Client) PublishOrderResponse(ctx context.Context, market string, execReport []*models.Execution) error {
+
+	data, err := json.Marshal(execReport)
+	if err != nil {
+		log.Printf("Error marshalling response: %v", err)
+		return fmt.Errorf("failed to publish execution reports")
+	}
 	if err := c.client.Publish(ctx, "order_responses:"+market, data).Err(); err != nil {
 		return err
 	}

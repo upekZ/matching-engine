@@ -146,10 +146,9 @@ func TestOrderBook_MatchOrder(t *testing.T) {
 	buyOrder := models.AddNewLimitReq("client1", "BTC-USD", models.BuyOrder, 50000.0, 100)
 
 	sellOrder := models.AddNewLimitReq("client2", "BTC-USD", models.SellOrder, 50000.0, 100)
-	_, err := ob.AddBuyRequest(buyOrder)
-	assert.NoError(t, err)
+	ob.AddBuyRequest(buyOrder)
 
-	executions, err := ob.AddSellRequest(sellOrder)
+	ob.AddSellRequest(sellOrder)
 	assert.NoError(t, err)
 	assert.True(t, len(executions) >= 2, "Should have at least new and trade executions")
 

@@ -47,8 +47,8 @@ type OrderBook struct {
 	OrderIndex          map[string]*models.OrderElement
 	ClientIDs           map[string]string
 
-	//StopBuyOrderContainers  *StopBuyOrders
-	//StopSellOrderContainers *StopSellOrders
+	StopBuyOrderContainers  *StopBuyOrders
+	StopSellOrderContainers *StopSellOrders
 }
 
 func NewOrderBook(market string) *OrderBook {
@@ -62,8 +62,8 @@ func NewOrderBook(market string) *OrderBook {
 		OrderIndex: make(map[string]*models.OrderElement),
 		ClientIDs:  make(map[string]string),
 
-		//StopBuyOrderContainers:  NewStopBuyContainers(),
-		//StopSellOrderContainers: NewStopSellContainers(),
+		StopBuyOrderContainers:  NewStopBuyContainers(),
+		StopSellOrderContainers: NewStopSellContainers(),
 	}
 }
 

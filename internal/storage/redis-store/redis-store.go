@@ -20,25 +20,22 @@ func NewCacheClient(addr string) (*Client, error) {
 	return &Client{client: client}, nil
 }
 
-func (c *Client) SaveTrades(trades []*models.Execution) error {
+func (c *Client) SaveTrades(trades *models.Execution) error {
 
-	for _, trade := range trades {
-		data, err := json.Marshal(trade)
-		if err != nil {
-			return err
-		}
-
-		if err := c.client.Set(context.Background(), "trade:"+trade.ExecID, data, 0).Err(); err != nil {
-			return err
-		}
+	data, err := json.Marshal(trades)
+	if err != nil {
+		return err
 	}
 
+	if err := c.client.Set(context.Background(), "execution:"+trades.ExecID, data, 0).Err(); err != nil {
+		return err
+	}
 	return nil
 }
 
 func (c *Client) GetExecutions(ctx context.Context) ([]*models.Execution, []string, error) {
 
-	keys, err := c.client.Keys(ctx, "trade:*").Result()
+	keys, err := c.client.Keys(ctx, "execution:*").Result()
 	if err != nil {
 		log.Printf("error getting keys: %v", err)
 		return nil, nil, err
