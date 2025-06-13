@@ -22,7 +22,7 @@ type MockMessageBroker struct {
 
 func NewMockMessageBroker() *MockMessageBroker {
 	return &MockMessageBroker{
-		messages: make(map[string][]*models.Execution), // Fixed typo: use map instead of models.ExecutionReport directly
+		messages: make(map[string][]*models.Execution), //use the map for broker
 	}
 }
 
@@ -35,6 +35,7 @@ func (m *MockMessageBroker) PublishOrderResponse(ctx context.Context, market str
 	return nil
 }
 
+//subscription not tested in e2e
 func (m *MockMessageBroker) SubscribeToResponsesByBroker(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error {
 	return nil
 }
