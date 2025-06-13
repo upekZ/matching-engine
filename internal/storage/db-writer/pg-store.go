@@ -55,57 +55,57 @@ func RunDBEngine(ctx context.Context, cacheClient CacheClient, maxBatchSize int,
 	return nil
 }
 
-func (engine *DbEngine) startExecWriter() {
+func (e *DbEngine) startExecWriter() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	var batch []*models.Execution
 
 	for {
 		select {
-		case exec, ok := <-engine.executionQueue:
+		case exec, ok := <-e.executionQueue:
 			if !ok {
-				engine.flushExecutions(exec)
+				e.flushExecutions(exec)
 				return
 			}
 
 			batch = append(batch, exec...)
-			if len(batch) >= engine.maxBatchSize {
-				engine.flushExecutions(batch)
+			if len(batch) >= e.maxBatchSize {
+				e.flushExecutions(batch)
 				batch = nil
 			}
 
 		case <-ticker.C:
-			executions, keys, err := engine.cacheClient.GetExecutions(context.Background())
+			executions, keys, err := e.cacheClient.GetExecutions(context.Background())
 			if err == nil && len(keys) > 0 {
-				engine.executionQueue <- executions
+				e.executionQueue <- executions
 			} else {
 				continue
 			}
 
 			log.Printf("flushing data.. writing %d executions to db", len(executions))
-			engine.flushExecutions(batch)
+			e.flushExecutions(batch)
 
-			if err := engine.cacheClient.ClearCachedExecutions(context.Background(), keys); err != nil {
+			if err := e.cacheClient.ClearCachedExecutions(context.Background(), keys); err != nil {
 				log.Printf("Unable to clear cached executions: %v\n", err)
 			}
 			batch = nil
 
-		case <-engine.ctx.Done():
-			engine.flushExecutions(batch)
+		case <-e.ctx.Done():
+			e.flushExecutions(batch)
 			return
 		}
 	}
 }
 
-func (engine *DbEngine) flushExecutions(batch []*models.Execution) {
+func (e *DbEngine) flushExecutions(batch []*models.Execution) {
 	if len(batch) == 0 {
 		return
 	}
-	ctx, cancel := context.WithTimeout(engine.ctx, 120*time.Second)
+	ctx, cancel := context.WithTimeout(e.ctx, 120*time.Second)
 	defer cancel()
 
 	for _, exec := range batch {
-		if err := engine.queryExec.UpsertExecution(ctx, convertToSqlParams(exec)); err != nil {
+		if err := e.queryExec.UpsertExecution(ctx, convertToSqlParams(exec)); err != nil {
 			log.Printf("failed db execution %s: %v", exec.ExecID, err)
 			return
 		}

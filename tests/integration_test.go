@@ -35,7 +35,7 @@ func (m *MockMessageBroker) PublishOrderResponse(ctx context.Context, market str
 	return nil
 }
 
-//subscription not tested in e2e
+// subscription not tested in e2e
 func (m *MockMessageBroker) SubscribeToResponsesByBroker(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error {
 	return nil
 }
