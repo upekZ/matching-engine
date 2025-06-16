@@ -8,30 +8,30 @@ type ExecType string
 type ExecutionReport map[string][]*Execution
 
 const (
-	ExecuteNew           ExecType = "new"
-	ExecuteTrade         ExecType = "trade"
-	ExecuteCancel        ExecType = "canceled"
-	ExecutePendingCancel ExecType = "pending_cancel"
-	ExecuteReject        ExecType = "rejected"
+	ExecuteNew           ExecType = "0"
+	ExecuteTrade         ExecType = "F"
+	ExecuteCancel        ExecType = "4"
+	ExecutePendingCancel ExecType = "6"
+	ExecuteReject        ExecType = "8"
 	ExecuteAccept        ExecType = "accept"
 )
 
 type Execution struct {
-	ExecType     ExecType    `json:"exec_type"`
-	OrdStatus    OrderStatus `json:"ord_status"`
-	ClOrdID      string      `json:"cl_ord_id"`
-	OrderID      string      `json:"order_id"`
-	Symbol       string      `json:"symbol"`
-	Side         OrderSide   `json:"side"`
-	OrderQty     int         `json:"order_qty"`
-	Price        float64     `json:"price"`
-	LastQty      int         `json:"last_qty"`
-	LastPx       float64     `json:"last_px"`
-	CumQty       int         `json:"cumQty"`
-	LeavesQty    int         `json:"leavesQty"`
-	ExecID       string      `json:"exec_id"`
-	TransactTime int64       `json:"transact_time"`
-	OrdType      OrderType   `json:"ord_type"`
+	ExecType     ExecType    `json:"<150>"`
+	OrdStatus    OrderStatus `json:"<39>"`
+	ClOrdID      string      `json:"<11>"`
+	OrderID      string      `json:"<37>"`
+	Symbol       string      `json:"<55>"`
+	Side         OrderSide   `json:"<54>"`
+	OrderQty     int         `json:"<38>"`
+	Price        float64     `json:"<44>"`
+	LastQty      int         `json:"<29>"`
+	LastPx       float64     `json:"<31>"`
+	CumQty       int         `json:"<14>"`
+	LeavesQty    int         `json:"<151>"`
+	ExecID       string      `json:"<17>"`
+	TransactTime int64       `json:"<60>"`
+	OrdType      OrderType   `json:"<40>"`
 }
 
 func (t *Execution) ToJSON() ([]byte, error) {

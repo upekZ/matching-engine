@@ -1,13 +1,38 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/upekZ/matching-engine/internal/models"
 	"log"
 )
 
-func (ob *OrderBook) processRequest(order *models.Order, returnCmp models.Comparator) {
+func (ob *orderBook) runOrderBook(ctx context.Context, orderChan chan orderRequest) {
+	for {
+		select {
+		case req := <-orderChan:
+
+			if req.ReqType != models.CancelOrder {
+				switch req.Side {
+				case models.SellOrder:
+					ob.addSellRequest(req)
+				case models.BuyOrder:
+					ob.addBuyRequest(req)
+				default:
+					log.Printf("Unknown order[%s] side %s", req.ClientID, req.Side)
+					continue
+				}
+			} else {
+				ob.cancelOrder(req)
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (ob *orderBook) processRequest(order *models.Order, returnCmp models.Comparator) {
 
 	order.ExecuteNew()
 
@@ -32,15 +57,15 @@ func (ob *OrderBook) processRequest(order *models.Order, returnCmp models.Compar
 	return
 }
 
-func (ob *OrderBook) addBuyRequest(order *models.Order) {
+func (ob *orderBook) addBuyRequest(order *models.Order) {
 	ob.processRequest(order, models.Greater)
 }
 
-func (ob *OrderBook) addSellRequest(order *models.Order) {
+func (ob *orderBook) addSellRequest(order *models.Order) {
 	ob.processRequest(order, models.Lesser)
 }
 
-func (ob *OrderBook) cancelOrder(order *models.Order) {
+func (ob *orderBook) cancelOrder(order *models.Order) {
 
 	defer order.ProcessExecutions()
 
@@ -54,7 +79,7 @@ func (ob *OrderBook) cancelOrder(order *models.Order) {
 	order.ExecuteCancel()
 }
 
-func (ob *OrderBook) addToOrderBook(order *models.Order) {
+func (ob *orderBook) addToOrderBook(order *models.Order) {
 
 	priceMap, priceList := ob.getOBContainers(order.Side)
 
@@ -73,7 +98,7 @@ func (ob *OrderBook) addToOrderBook(order *models.Order) {
 	order.ExecuteAccept()
 }
 
-func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator) {
+func (ob *orderBook) matchOrder(order *models.Order, returnCmp models.Comparator) {
 
 	_, priceList := ob.getOBContainers(order.GetOppositeOrderType())
 
@@ -101,7 +126,7 @@ func (ob *OrderBook) matchOrder(order *models.Order, returnCmp models.Comparator
 	}
 }
 
-func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) []*models.Order {
+func (ob *orderBook) matchOrdersInPrice(price float64, order *models.Order) []*models.Order {
 
 	filledOrders := make([]*models.Order, 0, 1)
 
@@ -134,7 +159,7 @@ func (ob *OrderBook) matchOrdersInPrice(price float64, order *models.Order) []*m
 	return filledOrders
 }
 
-func (ob *OrderBook) validateReqInOB(order *models.Order) error {
+func (ob *orderBook) validateReqInOB(order *models.Order) error {
 
 	if order.ReqType != models.CancelOrder {
 		if _, exists := ob.clientIDs[order.ClientID]; exists {
@@ -145,7 +170,7 @@ func (ob *OrderBook) validateReqInOB(order *models.Order) error {
 	return nil
 }
 
-func (ob *OrderBook) removeOrder(order *models.Order) error {
+func (ob *orderBook) removeOrder(order *models.Order) error {
 
 	orderID, ok := ob.clientIDs[order.ClientID]
 	if !ok {

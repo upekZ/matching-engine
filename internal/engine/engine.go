@@ -68,7 +68,7 @@ func (e *Engine) AddNewRequest(orderReq *models.Order) models.Order {
 
 	orderChan, exists := e.orderChannels.Load(newOrder.Symbol)
 	if !exists {
-		orderChan = e.addNewSymbol(newOrder.Symbol)
+		orderChan = e.addNewOrderBook(newOrder.Symbol)
 	}
 
 	orderChan.(chan orderRequest) <- newOrder
@@ -76,45 +76,21 @@ func (e *Engine) AddNewRequest(orderReq *models.Order) models.Order {
 	return *orderReq
 }
 
-func (e *Engine) addNewSymbol(symbol string) chan orderRequest {
+func (e *Engine) addNewOrderBook(symbol string) chan orderRequest {
 	book := newOrderBook(symbol)
-	channel := make(chan orderRequest, 264)
+	channel := make(chan orderRequest, 200)
 
 	if loadedBook, exists := e.orderBooks.LoadOrStore(symbol, book); exists {
-		book = loadedBook.(*OrderBook)
+		book = loadedBook.(*orderBook)
 	}
 
 	if loadedChannel, exists := e.orderChannels.LoadOrStore(symbol, channel); exists {
 		channel = loadedChannel.(chan orderRequest)
 	}
 
-	go e.runOrderBook(book, channel)
+	go book.runOrderBook(e.ctx, channel)
 
 	return channel
-}
-
-func (e *Engine) runOrderBook(book *OrderBook, orderChan chan orderRequest) {
-	for {
-		select {
-		case req := <-orderChan:
-
-			if req.ReqType != models.CancelOrder {
-				switch req.Side {
-				case models.SellOrder:
-					book.addSellRequest(req)
-				case models.BuyOrder:
-					book.addBuyRequest(req)
-				default:
-					log.Printf("Unknown order[%s] side %s", req.ClientID, req.Side)
-					continue
-				}
-			} else {
-				book.cancelOrder(req)
-			}
-		case <-e.ctx.Done():
-			return
-		}
-	}
 }
 
 func (e *Engine) SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error {
