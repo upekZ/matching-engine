@@ -1,121 +1,182 @@
 # Matching Engine
 
-A Matching engine for trading systems, built with Go. It supports order placement via REST APIs and real-time trade updates via gRPC streaming for internal gateways.
+A Matching Engine for trading systems, built with Go. It supports order placement via REST APIs and real-time trade updates via gRPC streaming for internal gateways. This project can be run either locally or using Docker for a containerized environment.
+
+---
 
 ## Features
-- **REST API**: Place buy/sell orders (`POST /orders` - specified by order fields).
-- **gRPC Streaming**: Subscribe to trade updates for specific markets (`SubscribeOrderUpdates`).
+
+- **REST API**: Place buy/sell orders (`POST /orders`) and cancel orders (`DELETE /orders`) with fields like `client_id`, `symbol`, `side`, `price`, and `quantity`.
+- **gRPC Streaming**: Subscribe to trade updates for specific markets via `SubscribeOrderUpdates` (port `50051`).
 - **High-Level Architecture**:
-    - **Presentation**: REST (`internal/api/rest`) and gRPC (`internal/api/grpc`).
-    - **Business Logic**: Matching engine (`internal/engine`) with channel-based order books.
+    - **Presentation**:
+        - REST (`internal/api/rest`) on port `3000`
+        - gRPC (`internal/api/grpc`) on port `50051`
+    - **Business Logic**: Matching engine (`internal/engine`) with channel-based order books per symbol.
     - **Data**: Redis (`internal/storage/redisCache`) for persistence and Pub/Sub.
-- **Redis Integration**: Stores executions and facilitates Pub/Sub for trade updates.
+- **Order Types**: Supports limit orders; future expansion planned for market and other order types.
+- **Testing**: Includes unit tests (`internal/engine`) and integration tests (`tests/integration_test.go`).
+
+---
 
 ## Prerequisites
-- **Go**: Version 1.22 or later.
-- **Redis**: Version 6.0 or later, running on `localhost:6379`.
-- **Postman**: For testing REST and gRPC endpoints.
+
+### Local Setup
+- **Go**: Version `1.23` or later.
+- **Redis**: Version `6.0` or later, running on `localhost:6379`.
+- **PostgreSQL**: Version `13` or later, running on `localhost:5432`.
+- **Tools**:
+    - Postman (>=9.0) for testing REST and gRPC endpoints
+    - `protoc` for gRPC code generation
 - **Dependencies**:
-  ```bash
-  go get github.com/google/uuid@v1.6.0
-  go get github.com/gorilla/mux@v1.8.1
-  go get github.com/gorilla/websocket@v1.5.3
-  go get github.com/redisCache/go-redisCache/v9@v9.6.1
-  go get google.golang.org/grpc@v1.67.0
-  go get google.golang.org/protobuf@v1.34.2
-  ```
+```bash
+go get github.com/google/uuid@v1.6.0
+go get github.com/gorilla/mux@v1.8.1
+go get github.com/gorilla/websocket@v1.5.3
+go get github.com/redis/go-redis/v9@v9.6.1
+go get google.golang.org/grpc@v1.67.0
+go get google.golang.org/protobuf@v1.34.2
+```
+
+### Docker Setup
+- **Docker**: Version `20.10` or later.
+- **Docker Compose**: Version `2.17.0` or later (plugin-based).
+- **Go**: Version `1.23` or later (included in Docker image).
+- **No Local Redis or PostgreSQL**: Dockerized instances are provided.
+
+---
 
 ## Setup
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/upekZ/matching-engine.git
-   cd matching-engine
-   ```
 
-2. **Install Dependencies**:
-   ```bash
-   go mod tidy
-   ```
+### Local Setup
+```bash
+# Clone the Repository
+git clone https://github.com/upekZ/matching-engine.git
+cd matching-engine
 
-3. **Start Redis**:
-   Ensure Redis is running on `localhost:6379`:
-   ```bash
-   redisCache-server
-   redisCache-cli ping  # Should return PONG
-   ```
+# Install Dependencies
+go mod tidy
 
-4. **Generate gRPC Code**:
-   Compile the `order_service.proto` file:
-   ```bash
-   protoc --go_out=. --go-grpc_out=. internal/api/grpc/order_service.proto
-   ```
+# Start Redis and PostgreSQL
+redis-server
+redis-cli ping  # Should return PONG
+sudo service postgresql start  # Or your PostgreSQL start command
 
-5. **Build and Run**:
-   ```bash
-   cd cmd/api
-   go build
-   ./api
-   ```
-    - REST server runs on `:3000`.
-    - gRPC server runs on `:8080`.
+# Generate gRPC Code
+protoc --go_out=. --go-grpc_out=. internal/api/grpc/order_service.proto
+
+# Build and Run
+cd cmd/api
+go build ./api
+```
+
+### Docker Setup
+```bash
+# Clone the Repository
+git clone https://github.com/upekZ/matching-engine.git
+cd matching-engine
+
+# Install Docker and Docker Compose
+sudo apt-get update
+sudo apt-get install -y docker.io docker-compose-plugin
+
+# Generate gRPC Code
+protoc --go_out=. --go-grpc_out=. internal/api/grpc/order_service.proto
+
+# Build and Run
+docker compose up --build
+```
+- REST server runs on `:3000`, gRPC server on `:50051`.
+
+---
 
 ## Usage
+
 ### Place/Cancel an Order (REST API)
+
 - **Endpoint**: `POST /orders`, `DELETE /orders`
 - **Example**:
-  ```bash
-  curl -X POST http://localhost:8082/orders -H "Content-Type: application/json" -d '{
-      "symbol": "BTC-USD",
-      "client_id": "id-from-client"
-      "side": "buy",
-      "price": 50000.0,
-      "quantity": 1,
-      "req_type": "newLimitOrder"
-  }'
-  ```
-    - REST response: created order with updated id and timestamp
-    - Response to grpc subscribers: `{"order_id":"...", "status":"open", "executions":[]}`
+```bash
+curl -X POST http://localhost:3000/orders -H "Content-Type: application/json" -d '{
+  "client_id": "client1",
+  "symbol": "BTC-USD",
+  "side": "buy",
+  "price": 50000.0,
+  "quantity": 1,
+  "type": "newLimitOrder"
+}'
+```
+- **Response**: JSON with `order_id`, `status`, and `executions`.
 
 ### Subscribe to Execution Updates (gRPC)
+
 - **RPC**: `SubscribeOrderUpdates`
 - **Steps**:
-    1. Use Postman (version ≥9.0):
-        - Create a new gRPC request.
-        - Import `internal/api/grpc/order_service.proto`.
-        - Create a new API (e.g., `MatchingEngineAPI`).
-        - Select `grpc.MatchingEngine.SubscribeOrderUpdates`.
-        - Set server URL: `localhost:8080` (insecure).
-        - Set `MarketRequest`:
-          ```json
-          {
-            "symbol": "BTC-USD"
-          }
-          ```
-        - Click “Invoke” to start streaming.
-    2. Place orders via REST to trigger updates (see above).
-    3. Observe streamed `OrderResponse` messages in Postman:
-        - Example: `{"order_id":"...", "executions":[{"id":"...", "symbol":"BTC-USD", ...}]}`
+    1. Use Postman (>=9.0)
+    2. Create a new gRPC request
+    3. Import `internal/api/grpc/order_service.proto`
+    4. Set server URL: `localhost:50051` (insecure)
+    5. Invoke `grpc.OrderService/SubscribeOrderUpdates` with:
+```json
+{
+  "market": "BTC-USD"
+}
+```
+6. Place orders via REST to trigger updates
+7. Observe streamed `ExecReport` messages
+
+---
 
 ## Architecture
-- **Presentation Layer**:
-    - REST API (`internal/api/rest`): Handles order placement (New Order and Cancel Order).
-    - gRPC (`internal/api/grpc`): Streams trade updates to gateways.
-- **Business Logic**:
-    - Each request will spawn a new goroutine and send request ot order-book. Each order-book has a goroutine which will process requests sequentially
-    - Engine (`internal/engine`): Processes orders using channels per symbol.
-- **Data Layer**:
-    - Redis (`internal/storage/redisCache`): Stores executions (`trade:<id>`) and facilitates Pub/Sub (`order_responses:<symbol>`).
-- **Type Safety**:
-    - Uses `models.OrderResponse` in `internal/models` to avoid gRPC dependencies in business logic.
-    - gRPC types are isolated to the presentation layer.
+
+### Presentation Layer
+- REST API (`internal/api/rest`): Port `3000`
+- gRPC (`internal/api/grpc`): Port `50051`, streams trade updates
+
+### Business Logic
+- Engine (`internal/engine`): Processes orders with goroutines per symbol using `orderBook`
+
+### Data Layer
+- Redis (`internal/storage/redisCache`): Stores executions (`trade:<id>`) and Pub/Sub (`order_responses:<symbol>`)
+- PostgreSQL: For persistent storage (via `init.sql`)
+- Type Safety: Uses `models.OrderResponse` to decouple gRPC from business logic
+
+---
 
 ## Future Improvements
-- Modifications to orderBook are made when executions are executed. This will be updated to use copies of orders and then to alter orderbook once all executions are completed.
-- Engine is only developed for LimitOrders. No Order types considered so far. to expand to other types of orders
-- Current implementation expects to cancel->New when order needs to be modified. This needs to be expanded to Cancel and New if priority is impacted only and modify if no impact for priority --> Add Modify Order
-- At the moment cancel order is defined to require an Order Type. This needs to be modified with ability to cancel by client ID
-- Engine uses redisCache both as an in-memory store and a message broker. Implementation uses a single redisCache instance. functionality can be seperated to facilitate a separate store and broker
-- Add Integration and Unit Tests
-- Add a persistent storage for routine backups
-- To Implement web-sockets with grpc
 
+- Modify `orderBook` to use order copies before updates
+- Expand to market and other order types
+- Add modify order functionality
+- Support cancel by client ID without order type
+- Separate Redis for store and broker
+- Enhance integration and unit tests
+- Add persistent storage backups
+- Implement WebSocket with gRPC
+
+---
+
+## Running with Makefile
+
+### Build
+- Locally: `make build`
+- Docker: `make USE_DOCKER=true build`
+
+### Run
+- Locally: `make run`
+- Docker: `make USE_DOCKER=true run`
+
+### Integration Tests
+- Locally: `make int-test`
+- Docker: `make USE_DOCKER=true int-test`
+
+### Unit Tests
+- Locally: `make unit-test`
+- Docker: `make USE_DOCKER=true unit-test`
+
+### Clean
+- Locally: `make clean`
+- Docker: `make USE_DOCKER=true clean`
+
+### Setup
+- `make setup` (works for both, installs deps and generates gRPC code)

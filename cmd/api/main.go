@@ -17,11 +17,13 @@ func main() {
 	redisCacheClient, cacheErr := redisCache.NewCacheClient("localhost:6379")
 	if cacheErr != nil {
 		log.Printf("Error creating redisCache cache: %v", cacheErr)
+		return
 	}
 
 	redisMsgBroker, brokerError := redisBroker.NewMessageBroker("localhost:6379")
 	if brokerError != nil {
 		log.Fatalf("Error creating redis broker: %v", brokerError)
+		return
 	}
 
 	eng := engine.New(redisMsgBroker, redisCacheClient)

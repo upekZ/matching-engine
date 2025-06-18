@@ -41,28 +41,15 @@ func New(msgBroker MessageBroker, cacheClient CacheStore) *Engine {
 
 func (e *Engine) AddNewRequest(orderReq *models.Order) models.Order {
 
-	var newOrder *models.Order
-
 	baseOrderParams := &models.BaseParams{
-		ClientID:  orderReq.ClientID,
-		Symbol:    orderReq.Symbol,
-		MsgBroker: e.MsgBroker,
-		Store:     e.CacheClient,
+		ClientID: orderReq.ClientID,
+		Symbol:   orderReq.Symbol,
+		ReqType:  orderReq.ReqType,
 	}
 
-	//proposed solution creates symbol specific channels dynamically if not in existence.
-	switch orderReq.ReqType {
-	case models.NewLimitOrder:
-		newOrder = models.AddNewLimitReq(baseOrderParams, orderReq.Side, orderReq.Price, orderReq.Quantity)
-	case models.NewMarketOrder:
-		newOrder = models.AddNewMarketReq(baseOrderParams, orderReq.Side, orderReq.Quantity)
-	case models.CancelOrder:
-		newOrder = models.AddCancelReq(baseOrderParams)
-	//ToDo support more order types
-
-	default:
-		orderReq.ExecuteReject()
-		orderReq.ProcessExecutions()
+	newOrder := e.generateOrderFromReq(orderReq, baseOrderParams)
+	//Rejections at engine level --> entries that shouldn't have reached matching engine level --> No execution reports --> Rejected Response to API
+	if newOrder == nil {
 		return *orderReq
 	}
 
@@ -88,9 +75,34 @@ func (e *Engine) addNewOrderBook(symbol string) chan orderRequest {
 		channel = loadedChannel.(chan orderRequest)
 	}
 
-	go book.runOrderBook(e.ctx, channel)
+	go book.runOrderBook(e.ctx, channel, e.CacheClient, e.MsgBroker)
 
 	return channel
+}
+
+func (e *Engine) generateOrderFromReq(orderReq *models.Order, baseOrderParams *models.BaseParams) *models.Order {
+
+	var newOrder *models.Order
+
+	if orderReq.ReqType == models.NewOrder {
+		switch orderReq.OrdType {
+		case models.NewLimitOrder:
+			newOrder = models.AddNewLimitReq(baseOrderParams, orderReq.Side, orderReq.Price, orderReq.Quantity)
+		case models.NewMarketOrder:
+			newOrder = models.AddNewMarketReq(baseOrderParams, orderReq.Side, orderReq.Quantity)
+		//ToDo support more order types
+		default:
+			log.Printf("unknown order type: %s", orderReq.OrdType)
+			orderReq.ExecuteReject()
+		}
+	} else if orderReq.ReqType == models.CancelOrder {
+		newOrder = models.AddCancelReq(baseOrderParams)
+	} else {
+		log.Printf("unknown request type: %s", orderReq.ReqType)
+		orderReq.ExecuteReject()
+	}
+
+	return newOrder
 }
 
 func (e *Engine) SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error {

@@ -1,18 +1,15 @@
 services:
-  app:
+  matching-engine-integration:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "3000:3000"  # REST API
-      - "8080:8080"  # gRPC (for REST app, if needed)
-    network_mode: host
-    command: ["./matching-engine"]  # Ensure it runs the REST server
+    environment:
+      - POSTGRES_CONN=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
+      - REDIS_ADDR=redis:6379
+    command: ["go", "test", "-v", "./tests/integration_test.go"]
 
   redis:
     image: "redis:alpine"
-    ports:
-      - "6379:6379"  # Default Redis port
 
   postgres:
     image: "postgres:13"
@@ -20,7 +17,5 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=postgres
-    ports:
-      - "5432:5432"  # Default PostgreSQL port
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql

@@ -13,7 +13,6 @@ const (
 	ExecuteCancel        ExecType = "4"
 	ExecutePendingCancel ExecType = "6"
 	ExecuteReject        ExecType = "8"
-	ExecuteAccept        ExecType = "accept"
 )
 
 type Execution struct {

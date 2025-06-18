@@ -1,7 +1,6 @@
 package models
 
 import (
-	"context"
 	"fmt"
 	"github.com/google/uuid"
 	"log"
@@ -31,7 +30,6 @@ const (
 const (
 	NewMarketOrder OrderType = "1"
 	NewLimitOrder  OrderType = "2"
-	CancelOrder    OrderType = "cancelOrder"
 
 	// NewStopOrder NewStopLossOrder ToDo Implement stop and stop-loss
 	NewStopOrder     OrderType = "3"
@@ -39,28 +37,11 @@ const (
 )
 
 const (
-	NewMarketOrderRequest ReqType = "NewMarketOrder"
-	NewLimitOrderRequest  ReqType = "NewLimitOrder"
-	CancelOrderRequest    ReqType = "CancelOrder"
+	NewOrder    ReqType = "NewOrder"
+	CancelOrder ReqType = "CancelOrder"
+
+	//ToDo: Amends
 )
-
-type CacheStore interface {
-	SaveExecutions(execs *Execution) error
-}
-
-type MessageBroker interface {
-	PublishOrderResponse(ctx context.Context, market string, execs ExecutionReport) error
-}
-
-type OrderRequest struct {
-	ClientID string    `json:"client_id"`
-	Symbol   string    `json:"symbol"`
-	Side     OrderSide `json:"side"`
-	Price    float64   `json:"price"`
-	StopPx   float64   `json:"stop_px"`
-	Quantity int       `json:"quantity"`
-	ReqType  OrderType `json:"req_type"`
-}
 
 type Order struct {
 	ID           string      `json:"id"`
@@ -74,19 +55,14 @@ type Order struct {
 	AvailableQty int         `json:"available_qty"`
 	Timestamp    int64       `json:"timestamp"`
 	Status       OrderStatus `json:"status"`
-	ReqType      OrderType   `json:"req_type"`
-
-	executions []*Execution
-	msgBroker  MessageBroker
-	store      CacheStore
+	OrdType      OrderType   `json:"ord_type"`
+	ReqType      ReqType     `json:"req_type"`
 }
 
 type BaseParams struct {
 	ClientID string
 	Symbol   string
-
-	MsgBroker MessageBroker
-	Store     CacheStore
+	ReqType  ReqType
 }
 
 func AddNewLimitReq(baseParams *BaseParams, side OrderSide, price float64, quantity int) *Order {
@@ -100,10 +76,8 @@ func AddNewLimitReq(baseParams *BaseParams, side OrderSide, price float64, quant
 		AvailableQty: quantity,
 		Timestamp:    time.Now().Unix(),
 		Status:       NewPendingOrderState,
-		ReqType:      NewLimitOrder,
-
-		msgBroker: baseParams.MsgBroker,
-		store:     baseParams.Store,
+		OrdType:      NewLimitOrder,
+		ReqType:      baseParams.ReqType,
 	}
 }
 
@@ -114,10 +88,7 @@ func AddCancelReq(baseParams *BaseParams) *Order {
 		Symbol:    baseParams.Symbol,
 		Timestamp: time.Now().Unix(),
 		Status:    NewPendingOrderState,
-		ReqType:   CancelOrder,
-
-		msgBroker: baseParams.MsgBroker,
-		store:     baseParams.Store,
+		ReqType:   baseParams.ReqType,
 	}
 
 }
@@ -132,10 +103,8 @@ func AddNewMarketReq(baseParams *BaseParams, side OrderSide, quantity int) *Orde
 		AvailableQty: quantity,
 		Timestamp:    time.Now().Unix(),
 		Status:       NewPendingOrderState,
-		ReqType:      NewMarketOrder,
-
-		msgBroker: baseParams.MsgBroker,
-		store:     baseParams.Store,
+		OrdType:      NewMarketOrder,
+		ReqType:      baseParams.ReqType,
 	}
 }
 
@@ -155,13 +124,12 @@ func (o *Order) ValidateReq() error {
 		errorString += "invalid quantity entry\t"
 	}
 
-	switch o.ReqType {
+	switch o.OrdType {
 	case NewLimitOrder:
 		if o.Price <= 0 {
 			errorString += "invalid price entry\t"
 		}
 	case NewMarketOrder:
-	case CancelOrder:
 
 	default:
 		errorString += "invalid req_type\t"
@@ -184,9 +152,9 @@ func (o *Order) ValidateReq() error {
 
 }
 
-func (o *Order) ExecuteNew() {
+func (o *Order) ExecuteNew() *Execution {
 	o.Status = NewOrderState
-	o.executions = append(o.executions, &Execution{
+	return &Execution{
 		ExecType:     ExecuteNew,
 		OrdStatus:    o.Status,
 		ClOrdID:      o.ClientID,
@@ -201,13 +169,13 @@ func (o *Order) ExecuteNew() {
 		LeavesQty:    o.AvailableQty,
 		ExecID:       uuid.New().String(),
 		TransactTime: time.Now().Unix(),
-		OrdType:      o.ReqType,
-	})
+		OrdType:      o.OrdType,
+	}
 }
 
-func (o *Order) ExecuteCancelReq() {
+func (o *Order) ExecuteCancelReq() *Execution {
 	o.Status = PendingCancel
-	o.executions = append(o.executions, &Execution{
+	return &Execution{
 		ExecType:     ExecutePendingCancel,
 		OrdStatus:    o.Status,
 		ClOrdID:      o.ClientID,
@@ -222,12 +190,12 @@ func (o *Order) ExecuteCancelReq() {
 		LeavesQty:    o.AvailableQty,
 		ExecID:       uuid.New().String(),
 		TransactTime: time.Now().Unix(),
-		OrdType:      o.ReqType,
-	})
+		OrdType:      o.OrdType,
+	}
 }
-func (o *Order) ExecuteReject() {
+func (o *Order) ExecuteReject() *Execution {
 	o.Status = Rejected
-	o.executions = append(o.executions, &Execution{
+	return &Execution{
 		ExecType:     ExecuteReject,
 		OrdStatus:    o.Status,
 		ClOrdID:      o.ClientID,
@@ -242,11 +210,11 @@ func (o *Order) ExecuteReject() {
 		LeavesQty:    o.AvailableQty,
 		ExecID:       uuid.New().String(),
 		TransactTime: time.Now().Unix(),
-		OrdType:      o.ReqType,
-	})
+		OrdType:      o.OrdType,
+	}
 }
 
-func (o *Order) ExecuteTrade(qty int, price float64) {
+func (o *Order) ExecuteTrade(qty int, price float64) *Execution {
 	o.FilledQty += qty
 	o.AvailableQty -= qty
 
@@ -256,7 +224,7 @@ func (o *Order) ExecuteTrade(qty int, price float64) {
 		o.Status = Filled
 	}
 
-	o.executions = append(o.executions, &Execution{
+	return &Execution{
 		ExecType:     ExecuteTrade,
 		OrdStatus:    o.Status,
 		ClOrdID:      o.ClientID,
@@ -271,13 +239,13 @@ func (o *Order) ExecuteTrade(qty int, price float64) {
 		LeavesQty:    o.AvailableQty,
 		ExecID:       uuid.New().String(),
 		TransactTime: time.Now().Unix(),
-		OrdType:      o.ReqType,
-	})
+		OrdType:      o.OrdType,
+	}
 }
 
-func (o *Order) ExecuteCancel() {
+func (o *Order) ExecuteCancel() *Execution {
 	o.Status = Cancelled
-	o.executions = append(o.executions, &Execution{
+	return &Execution{
 		ExecType:     ExecuteCancel,
 		OrdStatus:    o.Status,
 		ClOrdID:      o.ClientID,
@@ -292,44 +260,8 @@ func (o *Order) ExecuteCancel() {
 		LeavesQty:    o.AvailableQty,
 		ExecID:       uuid.New().String(),
 		TransactTime: time.Now().Unix(),
-		OrdType:      o.ReqType,
-	})
-}
-
-func (o *Order) ExecuteAccept() {
-	o.executions = append(o.executions, &Execution{
-		ExecType:     ExecuteAccept,
-		OrdStatus:    o.Status,
-		ClOrdID:      o.ClientID,
-		OrderID:      o.ID,
-		Symbol:       o.Symbol,
-		Side:         o.Side,
-		OrderQty:     o.Quantity,
-		Price:        o.Price,
-		LastQty:      0,
-		LastPx:       0,
-		CumQty:       o.FilledQty,
-		LeavesQty:    o.AvailableQty,
-		ExecID:       uuid.New().String(),
-		TransactTime: time.Now().Unix(),
-		OrdType:      o.ReqType,
-	})
-}
-
-func (o *Order) ProcessExecutions() {
-	for _, exec := range o.executions {
-		if err := o.store.SaveExecutions(exec); err != nil {
-			log.Printf("failed to save trades: %v", err)
-		}
+		OrdType:      o.OrdType,
 	}
-	execReport := make(map[string][]*Execution, 1)
-	execReport[o.ClientID] = o.executions
-
-	if err := o.msgBroker.PublishOrderResponse(context.Background(), o.Symbol, execReport); err != nil {
-		log.Printf("failed to publish order response: %v", err)
-	}
-
-	o.executions = nil
 }
 
 func (o *Order) IsReqProcessed(price float64, comp Comparator) bool {
@@ -338,7 +270,7 @@ func (o *Order) IsReqProcessed(price float64, comp Comparator) bool {
 		return true
 	}
 
-	switch o.ReqType {
+	switch o.OrdType {
 	case NewLimitOrder:
 		if !comp(o.Price, price) {
 			return true

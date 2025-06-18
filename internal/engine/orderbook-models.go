@@ -46,6 +46,10 @@ type orderBook struct {
 	buyOrderContainers  *buyOrders
 	orderIndex          map[string]*models.OrderElement
 	clientIDs           map[string]string
+
+	executions []*models.Execution
+	store      CacheStore
+	msgBroker  MessageBroker
 }
 
 func newOrderBook(market string) *orderBook {

@@ -8,7 +8,11 @@ import (
 	"log"
 )
 
-func (ob *orderBook) runOrderBook(ctx context.Context, orderChan chan orderRequest) {
+func (ob *orderBook) runOrderBook(ctx context.Context, orderChan chan orderRequest, store CacheStore, msgBroker MessageBroker) {
+
+	ob.store = store
+	ob.msgBroker = msgBroker
+
 	for {
 		select {
 		case req := <-orderChan:
@@ -26,35 +30,13 @@ func (ob *orderBook) runOrderBook(ctx context.Context, orderChan chan orderReque
 			} else {
 				ob.cancelOrder(req)
 			}
+
+			ob.handleExecutions()
+
 		case <-ctx.Done():
 			return
 		}
 	}
-}
-
-func (ob *orderBook) processRequest(order *models.Order, returnCmp models.Comparator) {
-
-	order.ExecuteNew()
-
-	defer order.ProcessExecutions()
-
-	if err := order.ValidateReq(); err != nil {
-		order.ExecuteReject()
-		return
-	}
-
-	if err := ob.validateReqInOB(order); err != nil {
-		order.ExecuteReject()
-		return
-	}
-
-	ob.matchOrder(order, returnCmp)
-
-	if order.ReqType == models.NewLimitOrder && (order.Status == models.PartiallyFilled || order.Status == models.NewOrderState) {
-		ob.addToOrderBook(order)
-	}
-
-	return
 }
 
 func (ob *orderBook) addBuyRequest(order *models.Order) {
@@ -65,18 +47,39 @@ func (ob *orderBook) addSellRequest(order *models.Order) {
 	ob.processRequest(order, models.Lesser)
 }
 
+func (ob *orderBook) processRequest(order *models.Order, returnCmp models.Comparator) {
+
+	ob.executions = append(ob.executions, order.ExecuteNew())
+
+	if err := order.ValidateReq(); err != nil {
+		ob.executions = append(ob.executions, order.ExecuteReject())
+		return
+	}
+
+	if err := ob.validateReqInOB(order); err != nil {
+		ob.executions = append(ob.executions, order.ExecuteReject())
+		return
+	}
+
+	ob.matchOrder(order, returnCmp)
+
+	if order.OrdType == models.NewLimitOrder && (order.Status == models.PartiallyFilled || order.Status == models.NewOrderState) {
+		ob.addToOrderBook(order)
+	}
+
+	return
+}
+
 func (ob *orderBook) cancelOrder(order *models.Order) {
 
-	defer order.ProcessExecutions()
-
-	order.ExecuteCancelReq()
+	ob.executions = append(ob.executions, order.ExecuteCancelReq())
 
 	if err := ob.removeOrder(order); err != nil {
 		order.ExecuteReject()
-		log.Printf("Could not cancel order: %v", err)
+		log.Printf("failed to cancel order: %v", err)
 		return
 	}
-	order.ExecuteCancel()
+	ob.executions = append(ob.executions, order.ExecuteCancel())
 }
 
 func (ob *orderBook) addToOrderBook(order *models.Order) {
@@ -94,8 +97,6 @@ func (ob *orderBook) addToOrderBook(order *models.Order) {
 
 	ob.orderIndex[order.ID] = element
 	ob.clientIDs[order.ClientID] = order.ID
-
-	order.ExecuteAccept()
 }
 
 func (ob *orderBook) matchOrder(order *models.Order, returnCmp models.Comparator) {
@@ -148,10 +149,8 @@ func (ob *orderBook) matchOrdersInPrice(price float64, order *models.Order) []*m
 		} else {
 			tradeQty = order.AvailableQty
 		}
-		bookOrder.ExecuteTrade(tradeQty, price)
-		bookOrder.ProcessExecutions()
 
-		order.ExecuteTrade(tradeQty, price)
+		ob.executeTrade(order, bookOrder, tradeQty, price)
 
 		e = e.Next()
 	}
@@ -166,7 +165,6 @@ func (ob *orderBook) validateReqInOB(order *models.Order) error {
 			return errors.New("duplicate order id")
 		}
 	}
-
 	return nil
 }
 
@@ -197,4 +195,28 @@ func (ob *orderBook) removeOrder(order *models.Order) error {
 	delete(ob.clientIDs, order.ClientID)
 
 	return nil
+}
+
+func (ob *orderBook) handleExecutions() {
+	execReport := make(map[string][]*models.Execution, 2)
+
+	//set and publishing is thread safe (for redis). so publishing by multiple order-books is safe
+	for _, exec := range ob.executions {
+		if err := ob.store.SaveExecutions(exec); err != nil {
+			log.Printf("failed to save trades: %v", err)
+		}
+		execReport[exec.ClOrdID] = append(execReport[exec.ClOrdID], exec)
+	}
+	if err := ob.msgBroker.PublishOrderResponse(context.Background(), ob.market, execReport); err != nil {
+		log.Printf("failed to publish order response: %v", err)
+	}
+	log.Printf("published executions: %v", execReport)
+	ob.executions = nil
+}
+
+func (ob *orderBook) executeTrade(order *models.Order, bookOrder *models.Order, tradeQty int, price float64) {
+	ob.executions = append(ob.executions, bookOrder.ExecuteTrade(tradeQty, price))
+	ob.executions = append(ob.executions, order.ExecuteTrade(tradeQty, price))
+
+	//ToDo publish Trades for MarketData
 }

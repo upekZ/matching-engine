@@ -10,6 +10,7 @@ import (
 	"github.com/upekZ/matching-engine/internal/models"
 	"github.com/upekZ/matching-engine/internal/storage/redis-store"
 	"net/http"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -43,8 +44,10 @@ func setupTestServer(t *testing.T) (*rest.Server, *redis_store.Client, *MockMess
 	ctx, cancel := context.WithCancel(context.Background())
 
 	msgBroker := NewMockMessageBroker()
-
-	redisAddr := "localhost:6379"
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		t.Fatalf("REDIS_ADDR environment variable not set")
+	}
 	redisClient, err := redis_store.NewCacheClient(redisAddr)
 	if err != nil {
 		t.Fatalf("Failed to connect to Redis: %v", err)
@@ -81,17 +84,17 @@ func submitOrder(t *testing.T, client *http.Client, baseURL string, order models
 
 func validateExecutions(t *testing.T, redisClient *redis_store.Client, expectedCount int, validationFunc func(*models.Execution) bool) {
 	time.Sleep(50 * time.Millisecond)
-	trades, _, err := redisClient.GetExecutions(context.Background())
+	executions, _, err := redisClient.GetExecutions(context.Background())
 	if err != nil {
 		t.Fatalf("Failed to get executions from Redis: %v", err)
 	}
-	if len(trades) == 0 {
+	if len(executions) == 0 {
 		t.Errorf("Expected executions in Redis, got none")
 	}
 
 	count := 0
-	for _, trade := range trades {
-		if validationFunc(trade) {
+	for _, exec := range executions {
+		if validationFunc(exec) {
 			count++
 		}
 	}
@@ -138,7 +141,8 @@ func testLimitOrderBuySellMatch(client *http.Client, baseURL string, redisClient
 			Side:     models.BuyOrder,
 			Price:    50000.0,
 			Quantity: 10,
-			ReqType:  models.NewLimitOrder,
+			OrdType:  models.NewLimitOrder,
+			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, buyOrder)
 
@@ -148,7 +152,8 @@ func testLimitOrderBuySellMatch(client *http.Client, baseURL string, redisClient
 			Side:     models.SellOrder,
 			Price:    50000.0,
 			Quantity: 10,
-			ReqType:  models.NewLimitOrder,
+			OrdType:  models.NewLimitOrder,
+			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, sellOrder)
 
@@ -180,7 +185,8 @@ func testMarketOrderBuyWithSellLimit(client *http.Client, baseURL string, redisC
 			Side:     models.SellOrder,
 			Price:    51000.0,
 			Quantity: 15,
-			ReqType:  models.NewLimitOrder,
+			OrdType:  models.NewLimitOrder,
+			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, sellOrder)
 
@@ -189,7 +195,8 @@ func testMarketOrderBuyWithSellLimit(client *http.Client, baseURL string, redisC
 			Symbol:   symbol,
 			Side:     models.BuyOrder,
 			Quantity: 10,
-			ReqType:  models.NewMarketOrder,
+			OrdType:  models.NewMarketOrder,
+			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, buyOrder)
 
@@ -229,7 +236,8 @@ func testMarketOrderSellWithBuyLimit(client *http.Client, baseURL string, redisC
 			Side:     models.BuyOrder,
 			Price:    49000.0,
 			Quantity: 15,
-			ReqType:  models.NewLimitOrder,
+			OrdType:  models.NewLimitOrder,
+			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, buyOrder)
 
@@ -238,7 +246,8 @@ func testMarketOrderSellWithBuyLimit(client *http.Client, baseURL string, redisC
 			Symbol:   symbol,
 			Side:     models.SellOrder,
 			Quantity: 15,
-			ReqType:  models.NewMarketOrder,
+			OrdType:  models.NewMarketOrder,
+			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, sellOrder)
 
@@ -277,7 +286,8 @@ func testCancelOrder(client *http.Client, baseURL string, redisClient *redis_sto
 			Side:     models.SellOrder,
 			Price:    100000.0,
 			Quantity: 10,
-			ReqType:  models.NewLimitOrder,
+			OrdType:  models.NewLimitOrder,
+			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, buyOrder)
 
@@ -313,7 +323,8 @@ func testInvalidOrder(client *http.Client, baseURL string, redisClient *redis_st
 			Side:     models.BuyOrder,
 			Price:    50000.0,
 			Quantity: -10,
-			ReqType:  models.NewLimitOrder,
+			OrdType:  models.NewLimitOrder,
+			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, invalidOrder)
 
@@ -341,7 +352,8 @@ func testPartialMatching(client *http.Client, baseURL string, redisClient *redis
 			Side:     models.SellOrder,
 			Price:    51000.0,
 			Quantity: 15,
-			ReqType:  models.NewLimitOrder,
+			OrdType:  models.NewLimitOrder,
+			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, sellOrder)
 
@@ -351,7 +363,8 @@ func testPartialMatching(client *http.Client, baseURL string, redisClient *redis
 			Side:     models.BuyOrder,
 			Price:    51000.0,
 			Quantity: 8,
-			ReqType:  models.NewLimitOrder,
+			OrdType:  models.NewLimitOrder,
+			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, buyOrder)
 
@@ -396,7 +409,8 @@ func testMatchTwoOrders(client *http.Client, baseURL string, redisClient *redis_
 			Side:     models.SellOrder,
 			Price:    49000.0,
 			Quantity: 10,
-			ReqType:  models.NewLimitOrder,
+			OrdType:  models.NewLimitOrder,
+			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, sellOrder1)
 
@@ -406,7 +420,8 @@ func testMatchTwoOrders(client *http.Client, baseURL string, redisClient *redis_
 			Side:     models.SellOrder,
 			Price:    49000.0,
 			Quantity: 10,
-			ReqType:  models.NewLimitOrder,
+			OrdType:  models.NewLimitOrder,
+			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, sellOrder2)
 
@@ -415,7 +430,8 @@ func testMatchTwoOrders(client *http.Client, baseURL string, redisClient *redis_
 			Symbol:   symbol,
 			Side:     models.BuyOrder,
 			Quantity: 20,
-			ReqType:  models.NewMarketOrder,
+			OrdType:  models.NewMarketOrder,
+			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, buyOrder)
 
@@ -469,7 +485,8 @@ func testMatchTwoOrdersAndPartialMatch(client *http.Client, baseURL string, redi
 			Side:     models.SellOrder,
 			Price:    48000.0,
 			Quantity: 10,
-			ReqType:  models.NewLimitOrder,
+			OrdType:  models.NewLimitOrder,
+			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, sellOrder1)
 
@@ -479,7 +496,8 @@ func testMatchTwoOrdersAndPartialMatch(client *http.Client, baseURL string, redi
 			Side:     models.SellOrder,
 			Price:    49000.0,
 			Quantity: 10,
-			ReqType:  models.NewLimitOrder,
+			OrdType:  models.NewLimitOrder,
+			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, sellOrder2)
 
@@ -489,7 +507,8 @@ func testMatchTwoOrdersAndPartialMatch(client *http.Client, baseURL string, redi
 			Side:     models.SellOrder,
 			Price:    49000.0,
 			Quantity: 20,
-			ReqType:  models.NewLimitOrder,
+			OrdType:  models.NewLimitOrder,
+			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, sellOrder3)
 
@@ -498,7 +517,8 @@ func testMatchTwoOrdersAndPartialMatch(client *http.Client, baseURL string, redi
 			Symbol:   symbol,
 			Side:     models.BuyOrder,
 			Quantity: 35,
-			ReqType:  models.NewMarketOrder,
+			OrdType:  models.NewMarketOrder,
+			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, buyOrder)
 
