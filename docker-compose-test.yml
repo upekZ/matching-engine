@@ -7,6 +7,16 @@ services:
       - POSTGRES_CONN=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
       - REDIS_ADDR=redis:6379
     command: ["go", "test", "-v", "./tests/integration_test.go"]
+    depends_on:
+      - redis
+      - postgres
+
+  matching-engine-unit-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["go", "test", "-v", "./internal/engine"]
+    network_mode: host
 
   redis:
     image: "redis:alpine"

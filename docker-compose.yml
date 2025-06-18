@@ -4,15 +4,15 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"  # REST API
-      - "8080:8080"  # gRPC (for REST app, if needed)
+      - "3000:3000"
+      - "8080:8080"
     network_mode: host
-    command: ["./matching-engine"]  # Ensure it runs the REST server
+    command: ["./matching-engine"]
 
   redis:
     image: "redis:alpine"
     ports:
-      - "6379:6379"  # Default Redis port
+      - "6379:6379"
 
   postgres:
     image: "postgres:13"
@@ -21,6 +21,6 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=postgres
     ports:
-      - "5432:5432"  # Default PostgreSQL port
+      - "5432:5432"
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
