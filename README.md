@@ -6,12 +6,12 @@ A Matching Engine for trading systems, built with Go. It supports order placemen
 
 ## Features
 
-- **REST API**: Place buy/sell orders (`POST /orders`) and cancel orders (`DELETE /orders`) with fields like `client_id`, `symbol`, `side`, `price`, and `quantity`.
+- **REST API**: Place buy/sell orders (`POST /orders`) and cancel orders `client_id`, `symbol`, `side`, `price`, and `quantity`.
 - **gRPC Streaming**: Subscribe to trade updates for specific markets via `SubscribeOrderUpdates` (port `50051`).
 - **High-Level Architecture**:
     - **Presentation**:
         - REST (`internal/api/rest`) on port `3000`
-        - gRPC (`internal/api/grpc`) on port `50051`
+        - gRPC (`internal/api/grpc`) on port `8080`
     - **Business Logic**: Matching engine (`internal/engine`) with channel-based order books per symbol.
     - **Data**: Redis (`internal/storage/redisCache`) for persistence and Pub/Sub.
 - **Order Types**: Supports limit orders; future expansion planned for market and other order types.
@@ -86,7 +86,7 @@ protoc --go_out=. --go-grpc_out=. internal/api/grpc/order_service.proto
 # Build and Run
 docker compose up --build
 ```
-- REST server runs on `:3000`, gRPC server on `:50051`.
+- REST server runs on `:3000`, gRPC server on `:8080`.
 
 ---
 
@@ -115,7 +115,7 @@ curl -X POST http://localhost:3000/orders -H "Content-Type: application/json" -d
     1. Use Postman (>=9.0)
     2. Create a new gRPC request
     3. Import `internal/api/grpc/order_service.proto`
-    4. Set server URL: `localhost:50051` (insecure)
+    4. Set server URL: `localhost:8080` (insecure)
     5. Invoke `grpc.OrderService/SubscribeOrderUpdates` with:
 ```json
 {
@@ -131,7 +131,7 @@ curl -X POST http://localhost:3000/orders -H "Content-Type: application/json" -d
 
 ### Presentation Layer
 - REST API (`internal/api/rest`): Port `3000`
-- gRPC (`internal/api/grpc`): Port `50051`, streams trade updates
+- gRPC (`internal/api/grpc`): Port `8080`, streams execution updates
 
 ### Business Logic
 - Engine (`internal/engine`): Processes orders with goroutines per symbol using `orderBook`
@@ -145,13 +145,9 @@ curl -X POST http://localhost:3000/orders -H "Content-Type: application/json" -d
 
 ## Future Improvements
 
-- Modify `orderBook` to use order copies before updates
-- Expand to market and other order types
-- Add modify order functionality
-- Support cancel by client ID without order type
+- Support Stop and StopLoss Order Types
+- Support modify/amend order functionality
 - Separate Redis for store and broker
-- Enhance integration and unit tests
-- Add persistent storage backups
 - Implement WebSocket with gRPC
 
 ---
