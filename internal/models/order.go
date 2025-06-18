@@ -11,30 +11,37 @@ import (
 type OrderSide string
 type OrderStatus string
 type OrderType string
+type ReqType string
 
 const (
-	BuyOrder  OrderSide = "buy"
-	SellOrder OrderSide = "sell"
+	BuyOrder  OrderSide = "1"
+	SellOrder OrderSide = "2"
 )
 
 const (
-	NewPendingOrderState OrderStatus = "newPending"
-	NewOrderState        OrderStatus = "new"
-	PartiallyFilled      OrderStatus = "partiallyFilled"
-	Filled               OrderStatus = "filled"
-	PendingCancel        OrderStatus = "pendingCancel"
-	Cancelled            OrderStatus = "cancelled"
-	Rejected             OrderStatus = "rejected"
+	NewPendingOrderState OrderStatus = "A"
+	NewOrderState        OrderStatus = "0"
+	PartiallyFilled      OrderStatus = "1"
+	Filled               OrderStatus = "2"
+	Cancelled            OrderStatus = "4"
+	PendingCancel        OrderStatus = "6"
+	Rejected             OrderStatus = "8"
 )
 
 const (
-	NewLimitOrder  OrderType = "newLimitOrder"
-	NewMarketOrder OrderType = "newMarketOrder"
+	NewMarketOrder OrderType = "1"
+	NewLimitOrder  OrderType = "2"
 	CancelOrder    OrderType = "cancelOrder"
 
 	// NewStopOrder NewStopLossOrder ToDo Implement stop and stop-loss
-	NewStopOrder     OrderType = "newStopOrder"
-	NewStopLossOrder OrderType = "newStopLossOrder"
+	NewStopOrder     OrderType = "3"
+	NewStopLossOrder OrderType = "4"
+)
+
+const (
+	NewMarketOrderRequest ReqType = "NewMarketOrder"
+	NewLimitOrderRequest  ReqType = "NewLimitOrder"
+	CancelOrderRequest    ReqType = "CancelOrder"
 )
 
 type CacheStore interface {
@@ -43,6 +50,16 @@ type CacheStore interface {
 
 type MessageBroker interface {
 	PublishOrderResponse(ctx context.Context, market string, execs ExecutionReport) error
+}
+
+type OrderRequest struct {
+	ClientID string    `json:"client_id"`
+	Symbol   string    `json:"symbol"`
+	Side     OrderSide `json:"side"`
+	Price    float64   `json:"price"`
+	StopPx   float64   `json:"stop_px"`
+	Quantity int       `json:"quantity"`
+	ReqType  OrderType `json:"req_type"`
 }
 
 type Order struct {
