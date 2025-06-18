@@ -11,6 +11,7 @@ import (
 type OrderSide string
 type OrderStatus string
 type OrderType string
+type ReqType string
 
 const (
 	BuyOrder  OrderSide = "1"
@@ -28,13 +29,19 @@ const (
 )
 
 const (
-	NewLimitOrder  OrderType = "2"
 	NewMarketOrder OrderType = "1"
+	NewLimitOrder  OrderType = "2"
 	CancelOrder    OrderType = "cancelOrder"
 
 	// NewStopOrder NewStopLossOrder ToDo Implement stop and stop-loss
 	NewStopOrder     OrderType = "3"
 	NewStopLossOrder OrderType = "4"
+)
+
+const (
+	NewMarketOrderRequest ReqType = "NewMarketOrder"
+	NewLimitOrderRequest  ReqType = "NewLimitOrder"
+	CancelOrderRequest    ReqType = "CancelOrder"
 )
 
 type CacheStore interface {
@@ -43,6 +50,16 @@ type CacheStore interface {
 
 type MessageBroker interface {
 	PublishOrderResponse(ctx context.Context, market string, execs ExecutionReport) error
+}
+
+type OrderRequest struct {
+	ClientID string    `json:"client_id"`
+	Symbol   string    `json:"symbol"`
+	Side     OrderSide `json:"side"`
+	Price    float64   `json:"price"`
+	StopPx   float64   `json:"stop_px"`
+	Quantity int       `json:"quantity"`
+	ReqType  OrderType `json:"req_type"`
 }
 
 type Order struct {
