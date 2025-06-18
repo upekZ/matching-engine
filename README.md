@@ -100,10 +100,10 @@ docker compose up --build
 curl -X POST http://localhost:3000/orders -H "Content-Type: application/json" -d '{
   "client_id": "client1",
   "symbol": "BTC-USD",
-  "side": "buy",
+  "side": "1",
   "price": 50000.0,
   "quantity": 1,
-  "type": "newLimitOrder"
+  "type": "2"
 }'
 ```
 - **Response**: JSON with `order_id`, `status`, and `executions`.

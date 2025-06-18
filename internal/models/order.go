@@ -28,12 +28,12 @@ const (
 )
 
 const (
-	NewMarketOrder OrderType = "1"
-	NewLimitOrder  OrderType = "2"
+	MarketOrder OrderType = "1"
+	LimitOrder  OrderType = "2"
 
-	// NewStopOrder NewStopLossOrder ToDo Implement stop and stop-loss
-	NewStopOrder     OrderType = "3"
-	NewStopLossOrder OrderType = "4"
+	// StopOrder StopLossOrder ToDo Implement stop and stop-loss
+	StopOrder     OrderType = "3"
+	StopLossOrder OrderType = "4"
 )
 
 const (
@@ -76,7 +76,7 @@ func AddNewLimitReq(baseParams *BaseParams, side OrderSide, price float64, quant
 		AvailableQty: quantity,
 		Timestamp:    time.Now().Unix(),
 		Status:       NewPendingOrderState,
-		OrdType:      NewLimitOrder,
+		OrdType:      LimitOrder,
 		ReqType:      baseParams.ReqType,
 	}
 }
@@ -103,7 +103,7 @@ func AddNewMarketReq(baseParams *BaseParams, side OrderSide, quantity int) *Orde
 		AvailableQty: quantity,
 		Timestamp:    time.Now().Unix(),
 		Status:       NewPendingOrderState,
-		OrdType:      NewMarketOrder,
+		OrdType:      MarketOrder,
 		ReqType:      baseParams.ReqType,
 	}
 }
@@ -125,11 +125,11 @@ func (o *Order) ValidateReq() error {
 	}
 
 	switch o.OrdType {
-	case NewLimitOrder:
+	case LimitOrder:
 		if o.Price <= 0 {
 			errorString += "invalid price entry\t"
 		}
-	case NewMarketOrder:
+	case MarketOrder:
 
 	default:
 		errorString += "invalid req_type\t"
@@ -271,7 +271,7 @@ func (o *Order) IsReqProcessed(price float64, comp Comparator) bool {
 	}
 
 	switch o.OrdType {
-	case NewLimitOrder:
+	case LimitOrder:
 		if !comp(o.Price, price) {
 			return true
 		}

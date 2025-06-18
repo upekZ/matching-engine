@@ -11,7 +11,7 @@ type MockCacheStore struct {
 	err error
 }
 
-func (m *MockCacheStore) SaveExecutions(trade *models.Execution) error {
+func (m *MockCacheStore) SaveExecution(exec *models.Execution) error {
 	return m.err
 }
 
@@ -29,9 +29,9 @@ func (m *MockMessageBroker) SubscribeToResponsesByBroker(ctx context.Context, ma
 }
 
 func TestEngine_AddNewRequest(t *testing.T) {
-	t.Run("NewLimitOrder", func(t *testing.T) {
+	t.Run("LimitOrder", func(t *testing.T) {
 		engine := New(&MockMessageBroker{}, &MockCacheStore{})
-		order := &models.Order{ClientID: "client1", Symbol: "SYM1", ReqType: models.NewOrder, OrdType: models.NewLimitOrder, Side: models.BuyOrder, Price: 100.0, Quantity: 10}
+		order := &models.Order{ClientID: "client1", Symbol: "SYM1", ReqType: models.NewOrder, OrdType: models.LimitOrder, Side: models.BuyOrder, Price: 100.0, Quantity: 10}
 		result := engine.AddNewRequest(order)
 		if result.ClientID != "client1" {
 			t.Errorf("Expected ClientID 'client1', got %s", result.ClientID)
@@ -63,16 +63,16 @@ func TestEngine_addNewOrderBook(t *testing.T) {
 func TestEngine_generateOrderFromReq(t *testing.T) {
 	engine := New(&MockMessageBroker{}, &MockCacheStore{})
 	baseParams := &models.BaseParams{ClientID: "client1", Symbol: "SYM1", ReqType: models.NewOrder}
-	t.Run("NewLimitOrder", func(t *testing.T) {
+	t.Run("LimitOrder", func(t *testing.T) {
 		order := &models.Order{Side: models.BuyOrder, Price: 100.0, Quantity: 10}
-		newOrder := engine.generateOrderFromReq(order, baseParams)
-		if newOrder == nil || newOrder.OrdType != models.NewLimitOrder {
-			t.Errorf("Expected NewLimitOrder, got %v", newOrder)
+		newOrder := engine.createOrderFromReq(order, baseParams)
+		if newOrder == nil || newOrder.OrdType != models.LimitOrder {
+			t.Errorf("Expected LimitOrder, got %v", newOrder)
 		}
 	})
 	t.Run("UnknownReqType", func(t *testing.T) {
 		order := &models.Order{ReqType: "UNKNOWN"}
-		newOrder := engine.generateOrderFromReq(order, baseParams)
+		newOrder := engine.createOrderFromReq(order, baseParams)
 		if newOrder != nil {
 			t.Error("Expected nil for unknown request type")
 		}
@@ -88,7 +88,6 @@ func TestEngine_SubscribeToResponses(t *testing.T) {
 		if err != nil {
 			t.Errorf("Expected no error, got %v", err)
 		}
-		// Note: Actual data depends on MessageBroker implementation
 	})
 
 	t.Run("BrokerError", func(t *testing.T) {

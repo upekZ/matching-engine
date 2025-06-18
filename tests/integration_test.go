@@ -1,4 +1,4 @@
-package rest_test
+package matching_test
 
 import (
 	"bytes"
@@ -46,7 +46,7 @@ func setupTestServer(t *testing.T) (*rest.Server, *redis_store.Client, *MockMess
 	msgBroker := NewMockMessageBroker()
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
-		t.Fatalf("REDIS_ADDR environment variable not set")
+		redisAddr = "localhost:6379"
 	}
 	redisClient, err := redis_store.NewCacheClient(redisAddr)
 	if err != nil {
@@ -113,6 +113,13 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 		}
 	}()
 
+	cleanCache := func() {
+		_, keys, err := redisClient.GetExecutions(context.Background())
+		if err == nil && len(keys) > 0 {
+			redisClient.ClearCachedExecutions(context.Background(), keys)
+		}
+	}
+
 	time.Sleep(100 * time.Millisecond)
 	client := &http.Client{}
 	baseURL := "http://localhost:3000"
@@ -125,6 +132,12 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 	t.Run("PartialMatching", testPartialMatching(client, baseURL, redisClient))
 	t.Run("MatchTwoOrders", testMatchTwoOrders(client, baseURL, redisClient))
 	t.Run("MatchTwoOrdersAndPartialMatch", testMatchTwoOrdersAndPartialMatch(client, baseURL, redisClient))
+	t.Run("ZeroQuantityOrder", testZeroQuantityOrder(client, baseURL, redisClient))
+	cleanCache()
+	t.Run("ExtremePriceOrder", testExtremePriceOrder(client, baseURL, redisClient))
+	t.Run("ConcurrentOrders", testConcurrentOrders(client, baseURL, redisClient))
+	t.Run("DifferentSymbolOrder", testDifferentSymbolOrder(client, baseURL, redisClient))
+	t.Run("MultiplePartialMatches", testMultiplePartialMatches(client, baseURL, redisClient))
 
 	time.Sleep(100 * time.Millisecond)
 }
@@ -141,7 +154,7 @@ func testLimitOrderBuySellMatch(client *http.Client, baseURL string, redisClient
 			Side:     models.BuyOrder,
 			Price:    50000.0,
 			Quantity: 10,
-			OrdType:  models.NewLimitOrder,
+			OrdType:  models.LimitOrder,
 			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, buyOrder)
@@ -152,7 +165,7 @@ func testLimitOrderBuySellMatch(client *http.Client, baseURL string, redisClient
 			Side:     models.SellOrder,
 			Price:    50000.0,
 			Quantity: 10,
-			OrdType:  models.NewLimitOrder,
+			OrdType:  models.LimitOrder,
 			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, sellOrder)
@@ -185,7 +198,7 @@ func testMarketOrderBuyWithSellLimit(client *http.Client, baseURL string, redisC
 			Side:     models.SellOrder,
 			Price:    51000.0,
 			Quantity: 15,
-			OrdType:  models.NewLimitOrder,
+			OrdType:  models.LimitOrder,
 			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, sellOrder)
@@ -195,7 +208,7 @@ func testMarketOrderBuyWithSellLimit(client *http.Client, baseURL string, redisC
 			Symbol:   symbol,
 			Side:     models.BuyOrder,
 			Quantity: 10,
-			OrdType:  models.NewMarketOrder,
+			OrdType:  models.MarketOrder,
 			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, buyOrder)
@@ -236,7 +249,7 @@ func testMarketOrderSellWithBuyLimit(client *http.Client, baseURL string, redisC
 			Side:     models.BuyOrder,
 			Price:    49000.0,
 			Quantity: 15,
-			OrdType:  models.NewLimitOrder,
+			OrdType:  models.LimitOrder,
 			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, buyOrder)
@@ -246,7 +259,7 @@ func testMarketOrderSellWithBuyLimit(client *http.Client, baseURL string, redisC
 			Symbol:   symbol,
 			Side:     models.SellOrder,
 			Quantity: 15,
-			OrdType:  models.NewMarketOrder,
+			OrdType:  models.MarketOrder,
 			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, sellOrder)
@@ -286,7 +299,7 @@ func testCancelOrder(client *http.Client, baseURL string, redisClient *redis_sto
 			Side:     models.SellOrder,
 			Price:    100000.0,
 			Quantity: 10,
-			OrdType:  models.NewLimitOrder,
+			OrdType:  models.LimitOrder,
 			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, buyOrder)
@@ -323,7 +336,7 @@ func testInvalidOrder(client *http.Client, baseURL string, redisClient *redis_st
 			Side:     models.BuyOrder,
 			Price:    50000.0,
 			Quantity: -10,
-			OrdType:  models.NewLimitOrder,
+			OrdType:  models.LimitOrder,
 			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, invalidOrder)
@@ -352,7 +365,7 @@ func testPartialMatching(client *http.Client, baseURL string, redisClient *redis
 			Side:     models.SellOrder,
 			Price:    51000.0,
 			Quantity: 15,
-			OrdType:  models.NewLimitOrder,
+			OrdType:  models.LimitOrder,
 			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, sellOrder)
@@ -363,7 +376,7 @@ func testPartialMatching(client *http.Client, baseURL string, redisClient *redis
 			Side:     models.BuyOrder,
 			Price:    51000.0,
 			Quantity: 8,
-			OrdType:  models.NewLimitOrder,
+			OrdType:  models.LimitOrder,
 			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, buyOrder)
@@ -409,7 +422,7 @@ func testMatchTwoOrders(client *http.Client, baseURL string, redisClient *redis_
 			Side:     models.SellOrder,
 			Price:    49000.0,
 			Quantity: 10,
-			OrdType:  models.NewLimitOrder,
+			OrdType:  models.LimitOrder,
 			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, sellOrder1)
@@ -420,7 +433,7 @@ func testMatchTwoOrders(client *http.Client, baseURL string, redisClient *redis_
 			Side:     models.SellOrder,
 			Price:    49000.0,
 			Quantity: 10,
-			OrdType:  models.NewLimitOrder,
+			OrdType:  models.LimitOrder,
 			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, sellOrder2)
@@ -430,7 +443,7 @@ func testMatchTwoOrders(client *http.Client, baseURL string, redisClient *redis_
 			Symbol:   symbol,
 			Side:     models.BuyOrder,
 			Quantity: 20,
-			OrdType:  models.NewMarketOrder,
+			OrdType:  models.MarketOrder,
 			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, buyOrder)
@@ -485,7 +498,7 @@ func testMatchTwoOrdersAndPartialMatch(client *http.Client, baseURL string, redi
 			Side:     models.SellOrder,
 			Price:    48000.0,
 			Quantity: 10,
-			OrdType:  models.NewLimitOrder,
+			OrdType:  models.LimitOrder,
 			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, sellOrder1)
@@ -496,7 +509,7 @@ func testMatchTwoOrdersAndPartialMatch(client *http.Client, baseURL string, redi
 			Side:     models.SellOrder,
 			Price:    49000.0,
 			Quantity: 10,
-			OrdType:  models.NewLimitOrder,
+			OrdType:  models.LimitOrder,
 			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, sellOrder2)
@@ -507,7 +520,7 @@ func testMatchTwoOrdersAndPartialMatch(client *http.Client, baseURL string, redi
 			Side:     models.SellOrder,
 			Price:    49000.0,
 			Quantity: 20,
-			OrdType:  models.NewLimitOrder,
+			OrdType:  models.LimitOrder,
 			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, sellOrder3)
@@ -517,7 +530,7 @@ func testMatchTwoOrdersAndPartialMatch(client *http.Client, baseURL string, redi
 			Symbol:   symbol,
 			Side:     models.BuyOrder,
 			Quantity: 35,
-			OrdType:  models.NewMarketOrder,
+			OrdType:  models.MarketOrder,
 			ReqType:  models.NewOrder,
 		}
 		submitOrder(t, client, baseURL, buyOrder)
@@ -548,6 +561,308 @@ func testMatchTwoOrdersAndPartialMatch(client *http.Client, baseURL string, redi
 						t.Errorf("Expected third sell order to be partially filled for cl_ord_id %s, got %s", trade.ClOrdID, trade.OrdStatus)
 					}
 					if trade.OrderQty != 20 || trade.LastQty != 15 || trade.CumQty != 15 || trade.LeavesQty != 5 {
+						t.Errorf("Unexpected sell execution for cl_ord_id %s: order_qty=%d, last_qty=%d, cum_qty=%d, leaves_qty=%d",
+							trade.ClOrdID, trade.OrderQty, trade.LastQty, trade.CumQty, trade.LeavesQty)
+					}
+					return true
+				}
+			}
+			return false
+		})
+
+		buyOrderCleaner := models.Order{
+			ClientID: "clear-buy-orders",
+			Symbol:   symbol,
+			Side:     models.SellOrder,
+			Quantity: 10,
+			OrdType:  models.MarketOrder,
+			ReqType:  models.NewOrder,
+		}
+		submitOrder(t, client, baseURL, buyOrderCleaner)
+
+		sellOrderCleaner := models.Order{
+			ClientID: "clear-sell-orders",
+			Symbol:   symbol,
+			Side:     models.BuyOrder,
+			Quantity: 10,
+			OrdType:  models.MarketOrder,
+			ReqType:  models.NewOrder,
+		}
+		submitOrder(t, client, baseURL, sellOrderCleaner)
+	}
+}
+
+func testZeroQuantityOrder(client *http.Client, baseURL string, redisClient *redis_store.Client) func(t *testing.T) {
+	return func(t *testing.T) {
+		symbol := "BTC-USD"
+		clientID := uuid.New().String()
+
+		invalidOrder := models.Order{
+			ClientID: clientID,
+			Symbol:   symbol,
+			Side:     models.BuyOrder,
+			Price:    50000.0,
+			Quantity: 0,
+			OrdType:  models.LimitOrder,
+			ReqType:  models.NewOrder,
+		}
+		submitOrder(t, client, baseURL, invalidOrder)
+
+		validateExecutions(t, redisClient, 2, func(trade *models.Execution) bool {
+			if trade.ClOrdID == clientID {
+				if !(trade.ExecType == models.ExecuteNew || trade.ExecType == models.ExecuteReject) {
+					t.Errorf("Expected no executions for zero quantity order cl_ord_id %s, got execution type %s", clientID, trade.ExecType)
+				}
+				return true
+			}
+			return false
+		})
+	}
+}
+
+func testExtremePriceOrder(client *http.Client, baseURL string, redisClient *redis_store.Client) func(t *testing.T) {
+	return func(t *testing.T) {
+		symbol := "BTC-USD"
+		clientID1 := uuid.New().String()
+		clientID2 := uuid.New().String()
+
+		buyOrder := models.Order{
+			ClientID: clientID1,
+			Symbol:   symbol,
+			Side:     models.SellOrder,
+			Price:    1000000.0,
+			Quantity: 10,
+			OrdType:  models.LimitOrder,
+			ReqType:  models.NewOrder,
+		}
+		submitOrder(t, client, baseURL, buyOrder)
+
+		sellOrder := models.Order{
+			ClientID: clientID2,
+			Symbol:   symbol,
+			Side:     models.BuyOrder,
+			Price:    5.0,
+			Quantity: 10,
+			OrdType:  models.LimitOrder,
+			ReqType:  models.NewOrder,
+		}
+		submitOrder(t, client, baseURL, sellOrder)
+
+		validateExecutions(t, redisClient, 2, func(trade *models.Execution) bool {
+			if trade.ClOrdID == clientID1 || trade.ClOrdID == clientID2 {
+				if trade.ExecType != models.ExecuteNew {
+					t.Errorf("Expected only new execution for cl_ord_id %s, got %s", trade.ClOrdID, trade.ExecType)
+				}
+				return true
+			}
+			return false
+		})
+	}
+}
+
+func testConcurrentOrders(client *http.Client, baseURL string, redisClient *redis_store.Client) func(t *testing.T) {
+	return func(t *testing.T) {
+		symbol := "BTC-ADA"
+		clientID1 := uuid.New().String()
+		clientID2 := uuid.New().String()
+		clientID3 := uuid.New().String()
+
+		var wg sync.WaitGroup
+		wg.Add(3)
+
+		go func() {
+			defer wg.Done()
+			buyOrder := models.Order{
+				ClientID: clientID1,
+				Symbol:   symbol,
+				Side:     models.BuyOrder,
+				Price:    50000.0,
+				Quantity: 10,
+				OrdType:  models.LimitOrder,
+				ReqType:  models.NewOrder,
+			}
+			submitOrder(t, client, baseURL, buyOrder)
+		}()
+
+		go func() {
+			defer wg.Done()
+			sellOrder1 := models.Order{
+				ClientID: clientID2,
+				Symbol:   symbol,
+				Side:     models.SellOrder,
+				Price:    50000.0,
+				Quantity: 5,
+				OrdType:  models.LimitOrder,
+				ReqType:  models.NewOrder,
+			}
+			submitOrder(t, client, baseURL, sellOrder1)
+		}()
+
+		go func() {
+			defer wg.Done()
+			sellOrder2 := models.Order{
+				ClientID: clientID3,
+				Symbol:   symbol,
+				Side:     models.SellOrder,
+				Price:    50000.0,
+				Quantity: 5,
+				OrdType:  models.LimitOrder,
+				ReqType:  models.NewOrder,
+			}
+			submitOrder(t, client, baseURL, sellOrder2)
+		}()
+
+		wg.Wait()
+
+		validateExecutions(t, redisClient, 4, func(trade *models.Execution) bool {
+			if trade.ExecType == models.ExecuteTrade {
+				if trade.ClOrdID == clientID1 {
+					if !(trade.OrdStatus == models.Filled || trade.OrdStatus == models.PartiallyFilled) {
+						t.Errorf("Expected buy order to be filled for cl_ord_id %s, got %s", trade.ClOrdID, trade.OrdStatus)
+					}
+					return true
+				}
+				if trade.ClOrdID == clientID2 || trade.ClOrdID == clientID3 {
+					if trade.OrdStatus != models.Filled {
+						t.Errorf("Expected sell order to be filled for cl_ord_id %s, got %s", trade.ClOrdID, trade.OrdStatus)
+					}
+					if trade.OrderQty != 5 || trade.LastQty != 5 || trade.CumQty != 5 || trade.LeavesQty != 0 {
+						t.Errorf("Unexpected sell execution for cl_ord_id %s: order_qty=%d, last_qty=%d, cum_qty=%d, leaves_qty=%d",
+							trade.ClOrdID, trade.OrderQty, trade.LastQty, trade.CumQty, trade.LeavesQty)
+					}
+					return true
+				}
+			}
+			return false
+		})
+	}
+}
+
+func testDifferentSymbolOrder(client *http.Client, baseURL string, redisClient *redis_store.Client) func(t *testing.T) {
+	return func(t *testing.T) {
+		symbol1 := "SHIB-USD"
+		symbol2 := "ETH-USD"
+		clientID1 := uuid.New().String()
+		clientID2 := uuid.New().String()
+
+		buyOrder := models.Order{
+			ClientID: clientID1,
+			Symbol:   symbol1,
+			Side:     models.BuyOrder,
+			Price:    50000.0,
+			Quantity: 10,
+			OrdType:  models.LimitOrder,
+			ReqType:  models.NewOrder,
+		}
+		submitOrder(t, client, baseURL, buyOrder)
+
+		sellOrder := models.Order{
+			ClientID: clientID2,
+			Symbol:   symbol2,
+			Side:     models.SellOrder,
+			Price:    50000.0,
+			Quantity: 10,
+			OrdType:  models.LimitOrder,
+			ReqType:  models.NewOrder,
+		}
+		submitOrder(t, client, baseURL, sellOrder)
+
+		validateExecutions(t, redisClient, 2, func(trade *models.Execution) bool {
+			if trade.ClOrdID == clientID1 || trade.ClOrdID == clientID2 {
+				if trade.ExecType != models.ExecuteNew {
+					t.Errorf("Expected only new execution for cl_ord_id %s, got %s", trade.ClOrdID, trade.ExecType)
+				}
+				return true
+			}
+			return false
+		})
+	}
+}
+
+func testMultiplePartialMatches(client *http.Client, baseURL string, redisClient *redis_store.Client) func(t *testing.T) {
+	return func(t *testing.T) {
+		symbol := "ETH-SOL"
+		clientID1 := uuid.New().String()
+		clientID2 := uuid.New().String()
+		clientID3 := uuid.New().String()
+		clientID4 := uuid.New().String()
+
+		sellOrder1 := models.Order{
+			ClientID: clientID1,
+			Symbol:   symbol,
+			Side:     models.SellOrder,
+			Price:    48000.0,
+			Quantity: 5,
+			OrdType:  models.LimitOrder,
+			ReqType:  models.NewOrder,
+		}
+		submitOrder(t, client, baseURL, sellOrder1)
+
+		sellOrder2 := models.Order{
+			ClientID: clientID2,
+			Symbol:   symbol,
+			Side:     models.SellOrder,
+			Price:    49000.0,
+			Quantity: 10,
+			OrdType:  models.LimitOrder,
+			ReqType:  models.NewOrder,
+		}
+		submitOrder(t, client, baseURL, sellOrder2)
+
+		sellOrder3 := models.Order{
+			ClientID: clientID3,
+			Symbol:   symbol,
+			Side:     models.SellOrder,
+			Price:    50000.0,
+			Quantity: 15,
+			OrdType:  models.LimitOrder,
+			ReqType:  models.NewOrder,
+		}
+		submitOrder(t, client, baseURL, sellOrder3)
+
+		buyOrder := models.Order{
+			ClientID: clientID4,
+			Symbol:   symbol,
+			Side:     models.BuyOrder,
+			Quantity: 20,
+			OrdType:  models.MarketOrder,
+			ReqType:  models.NewOrder,
+		}
+		submitOrder(t, client, baseURL, buyOrder)
+
+		validateExecutions(t, redisClient, 6, func(trade *models.Execution) bool {
+			if trade.ExecType == models.ExecuteTrade {
+				if trade.ClOrdID == clientID4 {
+					if !(trade.OrdStatus == models.Filled || trade.OrdStatus == models.PartiallyFilled) {
+						t.Errorf("Expected buy order to be filled for cl_ord_id %s, got %s", trade.ClOrdID, trade.OrdStatus)
+					}
+					return true
+				}
+				if trade.ClOrdID == clientID1 {
+					if trade.OrdStatus != models.Filled {
+						t.Errorf("Expected first sell order to be filled for cl_ord_id %s, got %s", trade.ClOrdID, trade.OrdStatus)
+					}
+					if trade.OrderQty != 5 || trade.LastQty != 5 || trade.CumQty != 5 || trade.LeavesQty != 0 {
+						t.Errorf("Unexpected sell execution for cl_ord_id %s: order_qty=%d, last_qty=%d, cum_qty=%d, leaves_qty=%d",
+							trade.ClOrdID, trade.OrderQty, trade.LastQty, trade.CumQty, trade.LeavesQty)
+					}
+					return true
+				}
+				if trade.ClOrdID == clientID2 {
+					if trade.OrdStatus != models.Filled {
+						t.Errorf("Expected second sell order to be filled for cl_ord_id %s, got %s", trade.ClOrdID, trade.OrdStatus)
+					}
+					if trade.OrderQty != 10 || trade.LastQty != 10 || trade.CumQty != 10 || trade.LeavesQty != 0 {
+						t.Errorf("Unexpected sell execution for cl_ord_id %s: order_qty=%d, last_qty=%d, cum_qty=%d, leaves_qty=%d",
+							trade.ClOrdID, trade.OrderQty, trade.LastQty, trade.CumQty, trade.LeavesQty)
+					}
+					return true
+				}
+				if trade.ClOrdID == clientID3 {
+					if trade.OrdStatus != models.PartiallyFilled {
+						t.Errorf("Expected third sell order to be partially filled for cl_ord_id %s, got %s", trade.ClOrdID, trade.OrdStatus)
+					}
+					if trade.OrderQty != 15 || trade.LastQty != 5 || trade.CumQty != 5 || trade.LeavesQty != 10 {
 						t.Errorf("Unexpected sell execution for cl_ord_id %s: order_qty=%d, last_qty=%d, cum_qty=%d, leaves_qty=%d",
 							trade.ClOrdID, trade.OrderQty, trade.LastQty, trade.CumQty, trade.LeavesQty)
 					}

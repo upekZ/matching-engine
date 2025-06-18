@@ -48,7 +48,7 @@ type orderBook struct {
 	clientIDs           map[string]string
 
 	executions []*models.Execution
-	store      CacheStore
+	store      ExecStore
 	msgBroker  MessageBroker
 }
 

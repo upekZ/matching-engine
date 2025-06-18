@@ -7,8 +7,8 @@ import (
 	"sync"
 )
 
-type CacheStore interface {
-	SaveExecutions(trades *models.Execution) error
+type ExecStore interface {
+	SaveExecution(exec *models.Execution) error
 }
 
 type MessageBroker interface {
@@ -22,12 +22,12 @@ type Engine struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	MsgBroker     MessageBroker
-	CacheClient   CacheStore
+	CacheClient   ExecStore
 }
 
 type orderRequest *models.Order
 
-func New(msgBroker MessageBroker, cacheClient CacheStore) *Engine {
+func New(msgBroker MessageBroker, cacheClient ExecStore) *Engine {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Engine{
 		orderBooks:    sync.Map{},
@@ -47,7 +47,7 @@ func (e *Engine) AddNewRequest(orderReq *models.Order) models.Order {
 		ReqType:  orderReq.ReqType,
 	}
 
-	newOrder := e.generateOrderFromReq(orderReq, baseOrderParams)
+	newOrder := e.createOrderFromReq(orderReq, baseOrderParams)
 	//Rejections at engine level --> entries that shouldn't have reached matching engine level --> No execution reports --> Rejected Response to API
 	if newOrder == nil {
 		return *orderReq
@@ -80,15 +80,15 @@ func (e *Engine) addNewOrderBook(symbol string) chan orderRequest {
 	return channel
 }
 
-func (e *Engine) generateOrderFromReq(orderReq *models.Order, baseOrderParams *models.BaseParams) *models.Order {
+func (e *Engine) createOrderFromReq(orderReq *models.Order, baseOrderParams *models.BaseParams) *models.Order {
 
 	var newOrder *models.Order
 
 	if orderReq.ReqType == models.NewOrder {
 		switch orderReq.OrdType {
-		case models.NewLimitOrder:
+		case models.LimitOrder:
 			newOrder = models.AddNewLimitReq(baseOrderParams, orderReq.Side, orderReq.Price, orderReq.Quantity)
-		case models.NewMarketOrder:
+		case models.MarketOrder:
 			newOrder = models.AddNewMarketReq(baseOrderParams, orderReq.Side, orderReq.Quantity)
 		//ToDo support more order types
 		default:

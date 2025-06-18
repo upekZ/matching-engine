@@ -8,7 +8,7 @@ import (
 	"log"
 )
 
-func (ob *orderBook) runOrderBook(ctx context.Context, orderChan chan orderRequest, store CacheStore, msgBroker MessageBroker) {
+func (ob *orderBook) runOrderBook(ctx context.Context, orderChan chan orderRequest, store ExecStore, msgBroker MessageBroker) {
 
 	ob.store = store
 	ob.msgBroker = msgBroker
@@ -31,7 +31,7 @@ func (ob *orderBook) runOrderBook(ctx context.Context, orderChan chan orderReque
 				ob.cancelOrder(req)
 			}
 
-			ob.handleExecutions()
+			ob.handleExecutionsFromReq()
 
 		case <-ctx.Done():
 			return
@@ -63,7 +63,7 @@ func (ob *orderBook) processRequest(order *models.Order, returnCmp models.Compar
 
 	ob.matchOrder(order, returnCmp)
 
-	if order.OrdType == models.NewLimitOrder && (order.Status == models.PartiallyFilled || order.Status == models.NewOrderState) {
+	if order.OrdType == models.LimitOrder && (order.Status == models.PartiallyFilled || order.Status == models.NewOrderState) {
 		ob.addToOrderBook(order)
 	}
 
@@ -133,9 +133,9 @@ func (ob *orderBook) matchOrdersInPrice(price float64, order *models.Order) []*m
 
 	ordersByPrice, _ := ob.getOBContainers(order.GetOppositeOrderType())
 
-	priceInfo := ordersByPrice[price]
+	orderListForPrice := ordersByPrice[price]
 
-	e := priceInfo.Front()
+	e := orderListForPrice.Front()
 
 	for e != nil && order.Status != models.Filled {
 
@@ -197,12 +197,12 @@ func (ob *orderBook) removeOrder(order *models.Order) error {
 	return nil
 }
 
-func (ob *orderBook) handleExecutions() {
+func (ob *orderBook) handleExecutionsFromReq() {
 	execReport := make(map[string][]*models.Execution, 2)
 
 	//set and publishing is thread safe (for redis). so publishing by multiple order-books is safe
 	for _, exec := range ob.executions {
-		if err := ob.store.SaveExecutions(exec); err != nil {
+		if err := ob.store.SaveExecution(exec); err != nil {
 			log.Printf("failed to save trades: %v", err)
 		}
 		execReport[exec.ClOrdID] = append(execReport[exec.ClOrdID], exec)
@@ -210,7 +210,7 @@ func (ob *orderBook) handleExecutions() {
 	if err := ob.msgBroker.PublishOrderResponse(context.Background(), ob.market, execReport); err != nil {
 		log.Printf("failed to publish order response: %v", err)
 	}
-	log.Printf("published executions: %v", execReport)
+
 	ob.executions = nil
 }
 

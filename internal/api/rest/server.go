@@ -15,10 +15,6 @@ type MatchingEngine interface {
 	AddNewRequest(order *models.Order) models.Order
 }
 
-type Channel interface {
-	ServeWS() http.HandlerFunc
-}
-
 type Server struct {
 	matcher MatchingEngine
 }
