@@ -7,7 +7,6 @@ import (
 	"github.com/upekZ/matching-engine/internal/engine"
 	redisBroker "github.com/upekZ/matching-engine/internal/message-broker"
 	storage "github.com/upekZ/matching-engine/internal/storage/db-writer"
-	kafkastore "github.com/upekZ/matching-engine/internal/storage/kafka-store"
 	redisCache "github.com/upekZ/matching-engine/internal/storage/redis-store"
 
 	"log"
@@ -25,9 +24,7 @@ func main() {
 		log.Fatalf("Error creating redis broker: %v", brokerError)
 	}
 
-	kafkaClient, _ := kafkastore.NewKafkaClient(nil, "executions:")
-
-	eng := engine.New(redisMsgBroker, kafkaClient)
+	eng := engine.New(redisMsgBroker, redisCacheClient)
 
 	_, err := grpc.NewServer("8080", eng)
 	if err != nil {

@@ -1,4 +1,4 @@
-version: '3.8'
+version: '3.7'
 
 services:
   app:
@@ -6,47 +6,51 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
-      - "8080:8080"
+      - "3000:3000"  # REST API
+      - "8080:8080"  # gRPC
     depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
+      - redis
+      - postgres
     environment:
-      - REDIS_ADDR=redis:6379
       - POSTGRES_CONN=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
-    networks:
-      - matching-engine-net
+      - REDIS_ADDR=redis:6379
+    volumes:
+      - ./:/app
 
   redis:
-    image: redis:7.0
+    image: "redis:alpine"
     ports:
       - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    networks:
-      - matching-engine-net
+    volumes:
+      - redis-data:/data
 
   postgres:
-    image: postgres:15
+    image: "postgres:13"
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
     ports:
       - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    networks:
-      - matching-engine-net
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
 
-networks:
-  matching-engine-net:
-    driver: bridge
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - app
+      - redis
+      - postgres
+    environment:
+      - POSTGRES_CONN=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
+      - REDIS_ADDR=redis:6379
+    volumes:
+      - ./:/app
+    command: ["go", "test", "./rest_test"]
+
+volumes:
+  redis-data:
+  postgres-data:
