@@ -41,7 +41,7 @@ func (c *Client) GetExecutions(ctx context.Context) ([]*models.Execution, []stri
 		return nil, nil, err
 	}
 
-	var trades []*models.Execution
+	var executions []*models.Execution
 	for _, key := range keys {
 		val, err := c.client.Get(ctx, key).Result()
 		if err != nil {
@@ -51,9 +51,9 @@ func (c *Client) GetExecutions(ctx context.Context) ([]*models.Execution, []stri
 		if err := json.Unmarshal([]byte(val), &exec); err != nil {
 			continue
 		}
-		trades = append(trades, &exec)
+		executions = append(executions, &exec)
 	}
-	return trades, keys, nil
+	return executions, keys, nil
 }
 
 func (c *Client) ClearCachedExecutions(ctx context.Context, keys []string) error {

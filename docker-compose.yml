@@ -1,13 +1,17 @@
 services:
   app:
+    environment:
+      - REDIS_ADDR=redis:6379
+      - POSTGRES_ADDR=postgres:5432
     build:
       context: .
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
       - "8080:8080"
-    network_mode: host
-    command: ["./matching-engine"]
+    depends_on:
+      - redis
+      - postgres
 
   redis:
     image: "redis:alpine"
