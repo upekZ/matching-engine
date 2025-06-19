@@ -29,7 +29,7 @@ type DbEngine struct {
 	dbHandler      BDHandler
 }
 
-func RunDBEngine(ctx context.Context, queryGen BDHandler, cacheClient CacheClient, maxBatchSize int, batchSize int) error {
+func RunDBEngine(ctx context.Context, dbHandler BDHandler, cacheClient CacheClient, maxBatchSize int, batchSize int) error {
 	cancelCtx, cancel := context.WithCancel(ctx)
 
 	engine := &DbEngine{
@@ -39,7 +39,7 @@ func RunDBEngine(ctx context.Context, queryGen BDHandler, cacheClient CacheClien
 		cacheClient:    cacheClient,
 		ctx:            cancelCtx,
 		cancel:         cancel,
-		dbHandler:      queryGen,
+		dbHandler:      dbHandler,
 	}
 
 	go engine.startExecWriter()

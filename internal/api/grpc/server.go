@@ -14,9 +14,6 @@ type GlobalEngine interface {
 	SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error
 }
 
-type CacheStore interface {
-}
-
 type OrderServiceHandler struct {
 	engine GlobalEngine
 	UnimplementedOrderServiceServer
@@ -80,7 +77,7 @@ func convertToProtoExecReport(input models.ExecutionReport) *ExecReport {
 	}
 
 	for key, execution := range input {
-		tradeList := &ExecutionList{
+		execList := &ExecutionList{
 			Trade: make([]*Execution, 0, len(input[key])),
 		}
 		for _, trade := range execution {
@@ -101,9 +98,9 @@ func convertToProtoExecReport(input models.ExecutionReport) *ExecReport {
 				TransactTime:       trade.TransactTime,
 				OrderType:          string(trade.OrdType),
 			}
-			tradeList.Trade = append(tradeList.Trade, protoTrade)
+			execList.Trade = append(execList.Trade, protoTrade)
 		}
-		execReport.ExecReport[key] = tradeList
+		execReport.ExecReport[key] = execList
 	}
 
 	return execReport

@@ -48,7 +48,26 @@ go get google.golang.org/protobuf@v1.34.2
 
 ## Setup
 
+### Docker Setup
+```bash
+# Clone the Repository
+git clone https://github.com/upekZ/matching-engine.git
+cd matching-engine
+
+# Install Docker and Docker Compose
+sudo apt-get update
+sudo apt-get install -y docker.io docker-compose-plugin
+
+# Generate gRPC Code
+protoc --go_out=. --go-grpc_out=. internal/api/grpc/order_service.proto
+
+# Build and Run without makefile
+docker compose up --build
+
+```
+
 ### Local Setup
+#### Note:Local Setup requires manual setting of dependencies and running in docker is encouraged
 ```bash
 # Clone the Repository
 git clone https://github.com/upekZ/matching-engine.git
@@ -65,26 +84,9 @@ sudo service postgresql start  # Or your PostgreSQL start command
 # Generate gRPC Code
 protoc --go_out=. --go-grpc_out=. internal/api/grpc/order_service.proto
 
-# Build and Run
+# Manual Build and Run without makefile
 cd cmd/api
 go build ./api
-```
-
-### Docker Setup
-```bash
-# Clone the Repository
-git clone https://github.com/upekZ/matching-engine.git
-cd matching-engine
-
-# Install Docker and Docker Compose
-sudo apt-get update
-sudo apt-get install -y docker.io docker-compose-plugin
-
-# Generate gRPC Code
-protoc --go_out=. --go-grpc_out=. internal/api/grpc/order_service.proto
-
-# Build and Run
-docker compose up --build
 ```
 - REST server runs on `:3000`, gRPC server on `:8080`.
 
@@ -173,6 +175,3 @@ curl -X POST http://localhost:3000/orders -H "Content-Type: application/json" -d
 ### Clean
 - Docker: `make clean`
 - Locally: `make RUN_LOCAL=true clean`
-
-### Setup
-- `make setup` (works for both, installs deps and generates gRPC code)
