@@ -106,6 +106,6 @@ func (e *Engine) SubscribeToResponses(ctx context.Context, market string, respon
 		log.Println("Subscription to request-response failed")
 		return err
 	}
-	log.Printf("New subscription to Market:%s\n")
+	log.Printf("New subscription to Market:%s\n", market)
 	return nil
 }

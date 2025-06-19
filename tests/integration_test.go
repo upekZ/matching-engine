@@ -10,7 +10,6 @@ import (
 	"github.com/upekZ/matching-engine/internal/models"
 	"github.com/upekZ/matching-engine/internal/storage/redis-store"
 	"net/http"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -44,11 +43,7 @@ func setupTestServer(t *testing.T) (*rest.Server, *redis_store.Client, *MockMess
 	ctx, cancel := context.WithCancel(context.Background())
 
 	msgBroker := NewMockMessageBroker()
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
-	}
-	redisClient, err := redis_store.NewCacheClient(redisAddr)
+	redisClient, err := redis_store.NewCacheClient()
 	if err != nil {
 		t.Fatalf("Failed to connect to Redis: %v", err)
 	}
