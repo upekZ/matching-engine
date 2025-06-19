@@ -95,8 +95,7 @@ func (ob *orderBook) addToOrderBook(order *models.Order) {
 
 	element := priceRef.Push(order)
 
-	ob.orderIndex[order.ID] = element
-	ob.clientIDs[order.ClientID] = order.ID
+	ob.clientIDs[order.ClientID] = element
 }
 
 func (ob *orderBook) matchOrder(order *models.Order, returnCmp models.Comparator) {
@@ -170,14 +169,9 @@ func (ob *orderBook) validateReqInOB(order *models.Order) error {
 
 func (ob *orderBook) removeOrder(order *models.Order) error {
 
-	orderID, ok := ob.clientIDs[order.ClientID]
+	orderInfo, ok := ob.clientIDs[order.ClientID]
 	if !ok {
 		return fmt.Errorf("order %s not found in order-book", order.ClientID)
-	}
-
-	orderInfo, exists := ob.orderIndex[orderID]
-	if !exists {
-		return fmt.Errorf("order: %s doesn't exist", order.ID)
 	}
 
 	orderList, priceList := ob.getOBContainers(orderInfo.Value().Side)
@@ -191,7 +185,6 @@ func (ob *orderBook) removeOrder(order *models.Order) error {
 		priceList.Remove(price)
 	}
 
-	delete(ob.orderIndex, order.ID)
 	delete(ob.clientIDs, order.ClientID)
 
 	return nil

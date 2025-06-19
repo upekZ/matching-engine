@@ -19,8 +19,6 @@ type MessageBroker interface {
 type Engine struct {
 	orderBooks    sync.Map
 	orderChannels sync.Map
-	ctx           context.Context
-	cancel        context.CancelFunc
 	MsgBroker     MessageBroker
 	CacheClient   ExecStore
 }
@@ -28,14 +26,11 @@ type Engine struct {
 type orderRequest *models.Order
 
 func New(msgBroker MessageBroker, cacheClient ExecStore) *Engine {
-	ctx, cancel := context.WithCancel(context.Background())
 	return &Engine{
 		orderBooks:    sync.Map{},
 		orderChannels: sync.Map{},
 		MsgBroker:     msgBroker,
 		CacheClient:   cacheClient,
-		ctx:           ctx,
-		cancel:        cancel,
 	}
 }
 
@@ -75,7 +70,7 @@ func (e *Engine) addNewOrderBook(symbol string) chan orderRequest {
 		channel = loadedChannel.(chan orderRequest)
 	}
 
-	go book.runOrderBook(e.ctx, channel, e.CacheClient, e.MsgBroker)
+	go book.runOrderBook(context.Background(), channel, e.CacheClient, e.MsgBroker)
 
 	return channel
 }
@@ -84,7 +79,7 @@ func (e *Engine) createOrderFromReq(orderReq *models.Order, baseOrderParams *mod
 
 	var newOrder *models.Order
 
-	if orderReq.ReqType == models.NewOrder {
+	if baseOrderParams.ReqType == models.NewOrder {
 		switch orderReq.OrdType {
 		case models.LimitOrder:
 			newOrder = models.AddNewLimitReq(baseOrderParams, orderReq.Side, orderReq.Price, orderReq.Quantity)
@@ -95,7 +90,7 @@ func (e *Engine) createOrderFromReq(orderReq *models.Order, baseOrderParams *mod
 			log.Printf("unknown order type: %s", orderReq.OrdType)
 			orderReq.ExecuteReject()
 		}
-	} else if orderReq.ReqType == models.CancelOrder {
+	} else if baseOrderParams.ReqType == models.CancelOrder {
 		newOrder = models.AddCancelReq(baseOrderParams)
 	} else {
 		log.Printf("unknown request type: %s", orderReq.ReqType)
@@ -106,10 +101,11 @@ func (e *Engine) createOrderFromReq(orderReq *models.Order, baseOrderParams *mod
 }
 
 func (e *Engine) SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error {
+
 	if err := e.MsgBroker.SubscribeToResponsesByBroker(ctx, market, responseChannel); err != nil {
 		log.Println("Subscription to request-response failed")
 		return err
 	}
-
+	log.Printf("New subscription to Market:%s\n")
 	return nil
 }

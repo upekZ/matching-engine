@@ -12,6 +12,9 @@ import (
 	"time"
 )
 
+type QueryEngine interface {
+}
+
 type CacheClient interface {
 	GetExecutions(ctx context.Context) ([]*models.Execution, []string, error)
 	ClearCachedExecutions(ctx context.Context, keys []string) error
@@ -25,7 +28,6 @@ type DbEngine struct {
 	ctx            context.Context
 	cancel         context.CancelFunc
 	queryExec      *sqlc2.Queries
-	dbClient       *sql.DB
 }
 
 func RunDBEngine(ctx context.Context, cacheClient CacheClient, maxBatchSize int, batchSize int) error {

@@ -155,24 +155,24 @@ curl -X POST http://localhost:3000/orders -H "Content-Type: application/json" -d
 ## Running with Makefile
 
 ### Build
-- Locally: `make build`
-- Docker: `make USE_DOCKER=true build`
+- Docker: `make build`
+- Locally: `make RUN_LOCAL=true build`
 
 ### Run
-- Locally: `make run`
-- Docker: `make USE_DOCKER=true run`
+- Docker: `make run`
+- Locally: `make RUN_LOCAL=true run`
 
 ### Integration Tests
-- Locally: `make int-test`
-- Docker: `make USE_DOCKER=true int-test`
+- Docker: `make int-test`
+- Locally: `make RUN_LOCAL=true int-test`
 
 ### Unit Tests
-- Locally: `make unit-test`
-- Docker: `make USE_DOCKER=true unit-test`
+- Docker: `make unit-test`
+- Locally: `make RUN_LOCAL=true unit-test`
 
 ### Clean
-- Locally: `make clean`
-- Docker: `make USE_DOCKER=true clean`
+- Docker: `make clean`
+- Locally: `make RUN_LOCAL=true clean`
 
 ### Setup
 - `make setup` (works for both, installs deps and generates gRPC code)

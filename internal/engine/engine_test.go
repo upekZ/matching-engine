@@ -64,7 +64,7 @@ func TestEngine_generateOrderFromReq(t *testing.T) {
 	engine := New(&MockMessageBroker{}, &MockCacheStore{})
 	baseParams := &models.BaseParams{ClientID: "client1", Symbol: "SYM1", ReqType: models.NewOrder}
 	t.Run("LimitOrder", func(t *testing.T) {
-		order := &models.Order{Side: models.BuyOrder, Price: 100.0, Quantity: 10}
+		order := &models.Order{OrdType: models.LimitOrder, Side: models.BuyOrder, Price: 100.0, Quantity: 10}
 		newOrder := engine.createOrderFromReq(order, baseParams)
 		if newOrder == nil || newOrder.OrdType != models.LimitOrder {
 			t.Errorf("Expected LimitOrder, got %v", newOrder)
@@ -105,7 +105,7 @@ func TestOrderBook_AddToOrderBook(t *testing.T) {
 	ob := newOrderBook("market1")
 	order := &models.Order{ID: "order1", ClientID: "client1", Side: models.BuyOrder, Price: 100.0, Quantity: 10}
 	ob.addToOrderBook(order)
-	_, ok := ob.orderIndex["order1"]
+	_, ok := ob.clientIDs["client1"]
 	if !ok {
 		t.Error("Expected order to be indexed")
 	}
