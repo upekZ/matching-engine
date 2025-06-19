@@ -8,6 +8,7 @@ import (
 	redisBroker "github.com/upekZ/matching-engine/internal/message-broker"
 	storage "github.com/upekZ/matching-engine/internal/storage/db-writer"
 	redisCache "github.com/upekZ/matching-engine/internal/storage/redis-store"
+	sqlc2 "github.com/upekZ/matching-engine/internal/storage/sqlc"
 	"log"
 )
 
@@ -33,7 +34,7 @@ func main() {
 	server := rest.NewServer(eng)
 
 	//db-engine can run in isolation with a cache reader
-	if dbErr := storage.RunDBEngine(context.Background(), redisCacheClient, 1000000, 1000); dbErr != nil {
+	if dbErr := storage.RunDBEngine(context.Background(), sqlc2.CreateDBHandler(), redisCacheClient, 1000000, 1000); dbErr != nil {
 		log.Printf("DB Start Failure: %v", dbErr)
 	}
 
