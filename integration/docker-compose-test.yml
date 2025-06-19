@@ -1,7 +1,7 @@
 services:
   matching-engine-integration:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
     environment:
       - POSTGRES_CONN=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
@@ -15,7 +15,7 @@ services:
 
   matching-engine-unit-tests:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
     environment:
       - POSTGRES_CONN=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable

@@ -6,14 +6,20 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/upekZ/matching-engine/internal/models"
 	"log"
+	"os"
 )
 
 type Client struct {
 	client *redis.Client
 }
 
-func NewCacheClient(addr string) (*Client, error) {
-	client := redis.NewClient(&redis.Options{Addr: addr})
+func NewCacheClient() (*Client, error) {
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+
+	client := redis.NewClient(&redis.Options{Addr: redisAddr})
 	if _, err := client.Ping(context.Background()).Result(); err != nil {
 		return nil, err
 	}

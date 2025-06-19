@@ -8,24 +8,17 @@ import (
 	redisBroker "github.com/upekZ/matching-engine/internal/message-broker"
 	storage "github.com/upekZ/matching-engine/internal/storage/db-writer"
 	redisCache "github.com/upekZ/matching-engine/internal/storage/redis-store"
-	"os"
-
 	"log"
 )
 
 func main() {
 
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
-	}
-
-	redisCacheClient, cacheErr := redisCache.NewCacheClient(redisAddr)
+	redisCacheClient, cacheErr := redisCache.NewCacheClient()
 	if cacheErr != nil {
 		log.Printf("Error creating redisCache cache: %v", cacheErr)
 	}
 
-	redisMsgBroker, brokerError := redisBroker.NewMessageBroker(redisAddr)
+	redisMsgBroker, brokerError := redisBroker.NewMessageBroker()
 	if brokerError != nil {
 		log.Fatalf("Error creating redis broker: %v", brokerError)
 	}

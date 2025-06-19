@@ -12,9 +12,6 @@ import (
 	"time"
 )
 
-type QueryEngine interface {
-}
-
 type CacheClient interface {
 	GetExecutions(ctx context.Context) ([]*models.Execution, []string, error)
 	ClearCachedExecutions(ctx context.Context, keys []string) error
@@ -108,7 +105,6 @@ func (e *DbEngine) flushExecutions(batch []*models.Execution) {
 
 	for _, exec := range batch {
 		if err := e.queryExec.UpsertExecution(ctx, convertToSqlParams(exec)); err != nil {
-			log.Printf("failed db execution %s: %v", exec.ExecID, err)
 			return
 		}
 	}
