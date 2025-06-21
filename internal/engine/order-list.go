@@ -1,15 +1,16 @@
-package models
+package engine
 
 import (
 	"container/list"
+	"github.com/upekZ/matching-engine/internal/models"
 )
 
 type OrderElement struct {
 	*list.Element
 }
 
-func (e *OrderElement) Value() *Order {
-	return e.Element.Value.(*Order)
+func (e *OrderElement) Value() *models.Order {
+	return e.Element.Value.(*models.Order)
 }
 
 type OrderList struct {
@@ -31,7 +32,7 @@ func (e *OrderElement) Next() *OrderElement {
 	return &OrderElement{next}
 }
 
-func (l *OrderList) Push(order *Order) *OrderElement {
+func (l *OrderList) Push(order *models.Order) *OrderElement {
 	return &OrderElement{l.List.PushBack(order)}
 }
 

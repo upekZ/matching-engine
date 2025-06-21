@@ -1,11 +1,12 @@
 package engine
 
 import (
+	"context"
 	rbt "github.com/emirpasic/gods/trees/redblacktree"
 	"github.com/upekZ/matching-engine/internal/models"
 )
 
-type PriceToOrderMap map[float64]*models.OrderList
+type PriceToOrderMap map[float64]*OrderList
 type sellOrders struct {
 	ordersByPrice PriceToOrderMap
 	orderedPrices *rbt.Tree
@@ -44,23 +45,30 @@ type orderBook struct {
 	market              string
 	sellOrderContainers *sellOrders
 	buyOrderContainers  *buyOrders
-	clientIDs           map[string]*models.OrderElement
+	clientIDs           map[string]*OrderElement
 
 	executions []*models.Execution
 	store      ExecStore
 	msgBroker  MessageBroker
 }
 
-func newOrderBook(market string) *orderBook {
+func newOrderBook(ctx context.Context, market string, store ExecStore, msgBroker MessageBroker) chan *models.Order {
 
-	return &orderBook{
+	ob := &orderBook{
 		market: market,
 
 		sellOrderContainers: newSellContainers(),
 		buyOrderContainers:  newBuyContainers(),
 
-		clientIDs: make(map[string]*models.OrderElement),
+		clientIDs: make(map[string]*OrderElement),
+
+		store:     store,
+		msgBroker: msgBroker,
 	}
+	channel := make(chan *models.Order, 200)
+	go ob.runOrderBook(ctx, channel)
+
+	return channel
 }
 
 func (ob *orderBook) getOBContainers(side models.OrderSide) (PriceToOrderMap, *rbt.Tree) {

@@ -8,14 +8,13 @@ import (
 	"log"
 )
 
-func (ob *orderBook) runOrderBook(ctx context.Context, orderChan chan orderRequest, store ExecStore, msgBroker MessageBroker) {
-
-	ob.store = store
-	ob.msgBroker = msgBroker
+func (ob *orderBook) runOrderBook(ctx context.Context, orderChan chan *models.Order) {
 
 	for {
 		select {
 		case req := <-orderChan:
+
+			req.UpdateNewOrderFields(NewExecHandler(ob.executions))
 
 			if req.ReqType != models.CancelOrder {
 				switch req.Side {
@@ -49,15 +48,10 @@ func (ob *orderBook) addSellRequest(order *models.Order) {
 
 func (ob *orderBook) processRequest(order *models.Order, returnCmp models.Comparator) {
 
-	ob.executions = append(ob.executions, order.ExecuteNew())
-
-	if err := order.ValidateReq(); err != nil {
-		ob.executions = append(ob.executions, order.ExecuteReject())
-		return
-	}
+	order.ExecuteNew()
 
 	if err := ob.validateReqInOB(order); err != nil {
-		ob.executions = append(ob.executions, order.ExecuteReject())
+		order.ExecuteReject()
 		return
 	}
 
@@ -72,14 +66,13 @@ func (ob *orderBook) processRequest(order *models.Order, returnCmp models.Compar
 
 func (ob *orderBook) cancelOrder(order *models.Order) {
 
-	ob.executions = append(ob.executions, order.ExecuteCancelReq())
-
+	order.ExecuteCancelReq()
 	if err := ob.removeOrder(order); err != nil {
 		order.ExecuteReject()
 		log.Printf("failed to cancel order: %v", err)
 		return
 	}
-	ob.executions = append(ob.executions, order.ExecuteCancel())
+	order.ExecuteCancel()
 }
 
 func (ob *orderBook) addToOrderBook(order *models.Order) {
@@ -87,7 +80,7 @@ func (ob *orderBook) addToOrderBook(order *models.Order) {
 	priceMap, priceList := ob.getOBContainers(order.Side)
 
 	if priceMap[order.Price] == nil {
-		priceMap[order.Price] = models.NewOrderList()
+		priceMap[order.Price] = NewOrderList()
 		priceList.Put(order.Price, true)
 	}
 
@@ -208,8 +201,8 @@ func (ob *orderBook) handleExecutionsFromReq() {
 }
 
 func (ob *orderBook) executeTrade(order *models.Order, bookOrder *models.Order, tradeQty int, price float64) {
-	ob.executions = append(ob.executions, bookOrder.ExecuteTrade(tradeQty, price))
-	ob.executions = append(ob.executions, order.ExecuteTrade(tradeQty, price))
+	bookOrder.ExecuteTrade(tradeQty, price)
+	order.ExecuteTrade(tradeQty, price)
 
 	//ToDo publish Trades for MarketData
 }

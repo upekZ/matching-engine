@@ -14,6 +14,9 @@ import (
 
 func main() {
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	redisCacheClient, cacheErr := redisCache.NewCacheClient()
 	if cacheErr != nil {
 		log.Printf("Error creating redisCache cache: %v", cacheErr)
@@ -24,9 +27,9 @@ func main() {
 		log.Fatalf("Error creating redis broker: %v", brokerError)
 	}
 
-	eng := engine.New(redisMsgBroker, redisCacheClient)
+	eng := engine.NewEngine(redisMsgBroker, redisCacheClient)
 
-	_, err := grpc.NewServer("8080", eng)
+	err := grpc.NewServer("8080", eng)
 	if err != nil {
 		log.Fatalf("Error starting grpc server: %v", brokerError)
 	}
@@ -34,11 +37,11 @@ func main() {
 	server := rest.NewServer(eng)
 
 	//db-engine can run in isolation with a cache reader
-	if dbErr := storage.RunDBEngine(context.Background(), sqlc2.CreateDBHandler(), redisCacheClient, 1000000, 1000); dbErr != nil {
+	if dbErr := storage.RunDBEngine(ctx, sqlc2.CreateDBHandler(), redisCacheClient, 1000000, 1000); dbErr != nil {
 		log.Printf("DB Start Failure: %v", dbErr)
 	}
 
 	if err := server.Start(); err != nil {
-		panic(err)
+		log.Fatalf("Error starting Rest server: %v", err)
 	}
 }

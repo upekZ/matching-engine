@@ -19,7 +19,7 @@ type OrderServiceHandler struct {
 	UnimplementedOrderServiceServer
 }
 
-func NewServer(port string, eng GlobalEngine) (*grpc.Server, error) {
+func NewServer(port string, eng GlobalEngine) error {
 	srv := grpc.NewServer()
 	RegisterOrderServiceServer(srv, &OrderServiceHandler{engine: eng})
 	go func() {
@@ -31,7 +31,7 @@ func NewServer(port string, eng GlobalEngine) (*grpc.Server, error) {
 			log.Fatalf("Failed to serve: %v", err)
 		}
 	}()
-	return srv, nil
+	return nil
 }
 
 func (s *OrderServiceHandler) SubscribeOrderUpdates(req *MarketRequest, stream OrderService_SubscribeOrderUpdatesServer) error {

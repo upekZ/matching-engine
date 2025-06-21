@@ -17,87 +17,45 @@ type MessageBroker interface {
 }
 
 type Engine struct {
-	orderBooks    sync.Map
-	orderChannels sync.Map
-	MsgBroker     MessageBroker
-	CacheClient   ExecStore
+	reqChannels sync.Map
+	MsgBroker   MessageBroker
+	CacheClient ExecStore
 }
 
-type orderRequest *models.Order
-
-func New(msgBroker MessageBroker, cacheClient ExecStore) *Engine {
+func NewEngine(msgBroker MessageBroker, cacheClient ExecStore) *Engine {
 	return &Engine{
-		orderBooks:    sync.Map{},
-		orderChannels: sync.Map{},
-		MsgBroker:     msgBroker,
-		CacheClient:   cacheClient,
+		reqChannels: sync.Map{},
+		MsgBroker:   msgBroker,
+		CacheClient: cacheClient,
 	}
 }
 
-func (e *Engine) AddNewRequest(orderReq *models.Order) models.Order {
+func (e *Engine) OnNewRequest(orderReq *models.Order) models.Order {
 
-	baseOrderParams := &models.BaseParams{
-		ClientID: orderReq.ClientID,
-		Symbol:   orderReq.Symbol,
-		ReqType:  orderReq.ReqType,
-	}
-
-	newOrder := e.createOrderFromReq(orderReq, baseOrderParams)
-	//Rejections at engine level --> entries that shouldn't have reached matching engine level --> No execution reports --> Rejected Response to API
-	if newOrder == nil {
+	if err := orderReq.ValidateReq(); err != nil {
+		orderReq.ExecuteReject()
 		return *orderReq
 	}
 
-	orderChan, exists := e.orderChannels.Load(newOrder.Symbol)
+	orderChan, exists := e.reqChannels.Load(orderReq.Symbol)
 	if !exists {
-		orderChan = e.addNewOrderBook(newOrder.Symbol)
+		orderChan = e.addNewOrderBook(orderReq.Symbol)
 	}
 
-	orderChan.(chan orderRequest) <- newOrder
+	orderChan.(chan *models.Order) <- orderReq
 
 	return *orderReq
 }
 
-func (e *Engine) addNewOrderBook(symbol string) chan orderRequest {
-	book := newOrderBook(symbol)
-	channel := make(chan orderRequest, 200)
+func (e *Engine) addNewOrderBook(symbol string) chan *models.Order {
 
-	if loadedBook, exists := e.orderBooks.LoadOrStore(symbol, book); exists {
-		book = loadedBook.(*orderBook)
+	reqChannel := newOrderBook(context.Background(), symbol, e.CacheClient, e.MsgBroker)
+
+	if loadedChannel, exists := e.reqChannels.LoadOrStore(symbol, reqChannel); exists {
+		reqChannel = loadedChannel.(chan *models.Order)
 	}
 
-	if loadedChannel, exists := e.orderChannels.LoadOrStore(symbol, channel); exists {
-		channel = loadedChannel.(chan orderRequest)
-	}
-
-	go book.runOrderBook(context.Background(), channel, e.CacheClient, e.MsgBroker)
-
-	return channel
-}
-
-func (e *Engine) createOrderFromReq(orderReq *models.Order, baseOrderParams *models.BaseParams) *models.Order {
-
-	var newOrder *models.Order
-
-	if baseOrderParams.ReqType == models.NewOrder {
-		switch orderReq.OrdType {
-		case models.LimitOrder:
-			newOrder = models.AddNewLimitReq(baseOrderParams, orderReq.Side, orderReq.Price, orderReq.Quantity)
-		case models.MarketOrder:
-			newOrder = models.AddNewMarketReq(baseOrderParams, orderReq.Side, orderReq.Quantity)
-		//ToDo support more order types
-		default:
-			log.Printf("unknown order type: %s", orderReq.OrdType)
-			orderReq.ExecuteReject()
-		}
-	} else if baseOrderParams.ReqType == models.CancelOrder {
-		newOrder = models.AddCancelReq(baseOrderParams)
-	} else {
-		log.Printf("unknown request type: %s", orderReq.ReqType)
-		orderReq.ExecuteReject()
-	}
-
-	return newOrder
+	return reqChannel
 }
 
 func (e *Engine) SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error {

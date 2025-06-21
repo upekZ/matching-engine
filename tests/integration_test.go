@@ -48,14 +48,14 @@ func setupTestServer(t *testing.T) (*rest.Server, *redis_store.Client, *MockMess
 		t.Fatalf("Failed to connect to Redis: %v", err)
 	}
 
-	matchingEngine := engine.New(msgBroker, redisClient)
+	matchingEngine := engine.NewEngine(msgBroker, redisClient)
 	server := rest.NewServer(matchingEngine)
 
 	cleanup := func() {
 		cancel()
 		_, keys, err := redisClient.GetExecutions(context.Background())
 		if err == nil && len(keys) > 0 {
-			redisClient.ClearCachedExecutions(ctx, keys)
+			redisClient.ClearStoredExecutions(ctx, keys)
 		}
 	}
 
@@ -111,7 +111,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 	cleanCache := func() {
 		_, keys, err := redisClient.GetExecutions(context.Background())
 		if err == nil && len(keys) > 0 {
-			redisClient.ClearCachedExecutions(context.Background(), keys)
+			redisClient.ClearStoredExecutions(context.Background(), keys)
 		}
 	}
 

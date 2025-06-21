@@ -12,7 +12,7 @@ import (
 )
 
 type MatchingEngine interface {
-	AddNewRequest(order *models.Order) models.Order
+	OnNewRequest(order *models.Order) models.Order
 }
 
 type Server struct {
@@ -52,7 +52,7 @@ func (s *Server) newOrderRequest(writer http.ResponseWriter, req *http.Request) 
 		http.Error(writer, "order request failure", http.StatusInternalServerError)
 		return
 	}
-	orderResp := s.matcher.AddNewRequest(&order)
+	orderResp := s.matcher.OnNewRequest(&order)
 
 	if err := writeJSON(writer, http.StatusCreated, orderResp); err != nil {
 		log.Printf("Error writing response: %v", err)

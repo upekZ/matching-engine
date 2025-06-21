@@ -43,6 +43,10 @@ const (
 	//ToDo: Amends
 )
 
+type ExecHandler interface {
+	AddExecution(exec *Execution)
+}
+
 type Order struct {
 	ID           string      `json:"id"`
 	ClientID     string      `json:"client_id"`
@@ -57,55 +61,8 @@ type Order struct {
 	Status       OrderStatus `json:"status"`
 	OrdType      OrderType   `json:"ord_type"`
 	ReqType      ReqType     `json:"req_type"`
-}
 
-type BaseParams struct {
-	ClientID string
-	Symbol   string
-	ReqType  ReqType
-}
-
-func AddNewLimitReq(baseParams *BaseParams, side OrderSide, price float64, quantity int) *Order {
-	return &Order{
-		ID:           uuid.New().String(),
-		ClientID:     baseParams.ClientID,
-		Symbol:       baseParams.Symbol,
-		Side:         side,
-		Price:        price,
-		Quantity:     quantity,
-		AvailableQty: quantity,
-		Timestamp:    time.Now().Unix(),
-		Status:       NewPendingOrderState,
-		OrdType:      LimitOrder,
-		ReqType:      baseParams.ReqType,
-	}
-}
-
-func AddCancelReq(baseParams *BaseParams) *Order {
-	return &Order{
-		ID:        uuid.New().String(),
-		ClientID:  baseParams.ClientID,
-		Symbol:    baseParams.Symbol,
-		Timestamp: time.Now().Unix(),
-		Status:    NewPendingOrderState,
-		ReqType:   baseParams.ReqType,
-	}
-
-}
-
-func AddNewMarketReq(baseParams *BaseParams, side OrderSide, quantity int) *Order {
-	return &Order{
-		ID:           uuid.New().String(),
-		ClientID:     baseParams.ClientID,
-		Symbol:       baseParams.Symbol,
-		Side:         side,
-		Quantity:     quantity,
-		AvailableQty: quantity,
-		Timestamp:    time.Now().Unix(),
-		Status:       NewPendingOrderState,
-		OrdType:      MarketOrder,
-		ReqType:      baseParams.ReqType,
-	}
+	execHandler ExecHandler
 }
 
 func (o *Order) GetOppositeOrderType() OrderSide {
@@ -152,9 +109,9 @@ func (o *Order) ValidateReq() error {
 
 }
 
-func (o *Order) ExecuteNew() *Execution {
+func (o *Order) ExecuteNew() {
 	o.Status = NewOrderState
-	return &Execution{
+	o.execHandler.AddExecution(&Execution{
 		ExecType:     ExecuteNew,
 		OrdStatus:    o.Status,
 		ClOrdID:      o.ClientID,
@@ -170,12 +127,12 @@ func (o *Order) ExecuteNew() *Execution {
 		ExecID:       uuid.New().String(),
 		TransactTime: time.Now().Unix(),
 		OrdType:      o.OrdType,
-	}
+	})
 }
 
-func (o *Order) ExecuteCancelReq() *Execution {
+func (o *Order) ExecuteCancelReq() {
 	o.Status = PendingCancel
-	return &Execution{
+	o.execHandler.AddExecution(&Execution{
 		ExecType:     ExecutePendingCancel,
 		OrdStatus:    o.Status,
 		ClOrdID:      o.ClientID,
@@ -191,11 +148,11 @@ func (o *Order) ExecuteCancelReq() *Execution {
 		ExecID:       uuid.New().String(),
 		TransactTime: time.Now().Unix(),
 		OrdType:      o.OrdType,
-	}
+	})
 }
-func (o *Order) ExecuteReject() *Execution {
+func (o *Order) ExecuteReject() {
 	o.Status = Rejected
-	return &Execution{
+	o.execHandler.AddExecution(&Execution{
 		ExecType:     ExecuteReject,
 		OrdStatus:    o.Status,
 		ClOrdID:      o.ClientID,
@@ -211,10 +168,10 @@ func (o *Order) ExecuteReject() *Execution {
 		ExecID:       uuid.New().String(),
 		TransactTime: time.Now().Unix(),
 		OrdType:      o.OrdType,
-	}
+	})
 }
 
-func (o *Order) ExecuteTrade(qty int, price float64) *Execution {
+func (o *Order) ExecuteTrade(qty int, price float64) {
 	o.FilledQty += qty
 	o.AvailableQty -= qty
 
@@ -224,7 +181,7 @@ func (o *Order) ExecuteTrade(qty int, price float64) *Execution {
 		o.Status = Filled
 	}
 
-	return &Execution{
+	o.execHandler.AddExecution(&Execution{
 		ExecType:     ExecuteTrade,
 		OrdStatus:    o.Status,
 		ClOrdID:      o.ClientID,
@@ -240,12 +197,12 @@ func (o *Order) ExecuteTrade(qty int, price float64) *Execution {
 		ExecID:       uuid.New().String(),
 		TransactTime: time.Now().Unix(),
 		OrdType:      o.OrdType,
-	}
+	})
 }
 
-func (o *Order) ExecuteCancel() *Execution {
+func (o *Order) ExecuteCancel() {
 	o.Status = Cancelled
-	return &Execution{
+	o.execHandler.AddExecution(&Execution{
 		ExecType:     ExecuteCancel,
 		OrdStatus:    o.Status,
 		ClOrdID:      o.ClientID,
@@ -261,7 +218,7 @@ func (o *Order) ExecuteCancel() *Execution {
 		ExecID:       uuid.New().String(),
 		TransactTime: time.Now().Unix(),
 		OrdType:      o.OrdType,
-	}
+	})
 }
 
 func (o *Order) IsReqProcessed(price float64, comp Comparator) bool {
@@ -278,4 +235,13 @@ func (o *Order) IsReqProcessed(price float64, comp Comparator) bool {
 	}
 
 	return false
+}
+
+func (o *Order) UpdateNewOrderFields(execHandler ExecHandler) {
+
+	o.ID = uuid.New().String()
+	o.Timestamp = time.Now().Unix()
+	o.Status = NewPendingOrderState
+
+	o.execHandler = execHandler
 }

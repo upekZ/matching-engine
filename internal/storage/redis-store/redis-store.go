@@ -62,7 +62,7 @@ func (c *Client) GetExecutions(ctx context.Context) ([]*models.Execution, []stri
 	return executions, keys, nil
 }
 
-func (c *Client) ClearCachedExecutions(ctx context.Context, keys []string) error {
+func (c *Client) ClearStoredExecutions(ctx context.Context, keys []string) error {
 
 	_, err := c.client.Del(ctx, keys...).Result()
 	if err != nil {

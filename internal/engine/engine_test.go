@@ -30,18 +30,18 @@ func (m *MockMessageBroker) SubscribeToResponsesByBroker(ctx context.Context, ma
 
 func TestEngine_AddNewRequest(t *testing.T) {
 	t.Run("LimitOrder", func(t *testing.T) {
-		engine := New(&MockMessageBroker{}, &MockCacheStore{})
+		engine := NewEngine(&MockMessageBroker{}, &MockCacheStore{})
 		order := &models.Order{ClientID: "client1", Symbol: "SYM1", ReqType: models.NewOrder, OrdType: models.LimitOrder, Side: models.BuyOrder, Price: 100.0, Quantity: 10}
-		result := engine.AddNewRequest(order)
+		result := engine.OnNewRequest(order)
 		if result.ClientID != "client1" {
 			t.Errorf("Expected ClientID 'client1', got %s", result.ClientID)
 		}
 	})
 
 	t.Run("UnknownOrderType", func(t *testing.T) {
-		engine := New(&MockMessageBroker{}, &MockCacheStore{})
+		engine := NewEngine(&MockMessageBroker{}, &MockCacheStore{})
 		order := &models.Order{ClientID: "client1", Symbol: "SYM1", ReqType: models.NewOrder, OrdType: "UNKNOWN", Side: models.BuyOrder}
-		result := engine.AddNewRequest(order)
+		result := engine.OnNewRequest(order)
 		if result.Status != models.Rejected {
 			t.Errorf("Expected Rejected status, got %s", result.Status)
 		}
@@ -49,7 +49,7 @@ func TestEngine_AddNewRequest(t *testing.T) {
 }
 
 func TestEngine_addNewOrderBook(t *testing.T) {
-	engine := New(&MockMessageBroker{}, &MockCacheStore{})
+	engine := NewEngine(&MockMessageBroker{}, &MockCacheStore{})
 	channel := engine.addNewOrderBook("SYM1")
 	if channel == nil {
 		t.Error("Expected non-nil channel")
@@ -61,8 +61,8 @@ func TestEngine_addNewOrderBook(t *testing.T) {
 }
 
 func TestEngine_generateOrderFromReq(t *testing.T) {
-	engine := New(&MockMessageBroker{}, &MockCacheStore{})
-	baseParams := &models.BaseParams{ClientID: "client1", Symbol: "SYM1", ReqType: models.NewOrder}
+	engine := NewEngine(&MockMessageBroker{}, &MockCacheStore{})
+	baseParams := &models.BaseParams{clientID: "client1", symbol: "SYM1", reqType: models.NewOrder}
 	t.Run("LimitOrder", func(t *testing.T) {
 		order := &models.Order{OrdType: models.LimitOrder, Side: models.BuyOrder, Price: 100.0, Quantity: 10}
 		newOrder := engine.createOrderFromReq(order, baseParams)
@@ -82,7 +82,7 @@ func TestEngine_generateOrderFromReq(t *testing.T) {
 func TestEngine_SubscribeToResponses(t *testing.T) {
 	t.Run("SuccessfulSubscription", func(t *testing.T) {
 		ctx := context.Background()
-		engine := New(&MockMessageBroker{}, &MockCacheStore{})
+		engine := NewEngine(&MockMessageBroker{}, &MockCacheStore{})
 		responseChannel := make(chan models.ExecutionReport, 1)
 		err := engine.SubscribeToResponses(ctx, "market1", responseChannel)
 		if err != nil {
@@ -92,7 +92,7 @@ func TestEngine_SubscribeToResponses(t *testing.T) {
 
 	t.Run("BrokerError", func(t *testing.T) {
 		ctx := context.Background()
-		engine := New(&MockMessageBroker{subscribeErr: errors.New("broker error")}, &MockCacheStore{})
+		engine := NewEngine(&MockMessageBroker{subscribeErr: errors.New("broker error")}, &MockCacheStore{})
 		responseChannel := make(chan models.ExecutionReport, 1)
 		err := engine.SubscribeToResponses(ctx, "market1", responseChannel)
 		if err == nil || err.Error() != "broker error" {
