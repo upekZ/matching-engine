@@ -45,6 +45,7 @@ const (
 
 type ExecHandler interface {
 	AddExecution(exec *Execution)
+	PublishExecutions() error
 }
 
 type Order struct {
@@ -63,6 +64,15 @@ type Order struct {
 	ReqType      ReqType     `json:"req_type"`
 
 	execHandler ExecHandler
+}
+
+func (o *Order) OnNewOrderReq(execHandler ExecHandler) {
+
+	o.ID = uuid.New().String()
+	o.Timestamp = time.Now().Unix()
+	o.Status = NewPendingOrderState
+
+	o.execHandler = execHandler
 }
 
 func (o *Order) GetOppositeOrderType() OrderSide {
@@ -235,13 +245,4 @@ func (o *Order) IsReqProcessed(price float64, comp Comparator) bool {
 	}
 
 	return false
-}
-
-func (o *Order) UpdateNewOrderFields(execHandler ExecHandler) {
-
-	o.ID = uuid.New().String()
-	o.Timestamp = time.Now().Unix()
-	o.Status = NewPendingOrderState
-
-	o.execHandler = execHandler
 }

@@ -43,13 +43,13 @@ func setupTestServer(t *testing.T) (*rest.Server, *redis_store.Client, *MockMess
 	ctx, cancel := context.WithCancel(context.Background())
 
 	msgBroker := NewMockMessageBroker()
-	redisClient, err := redis_store.NewCacheClient()
+	redisClient, err := redis_store.New()
 	if err != nil {
 		t.Fatalf("Failed to connect to Redis: %v", err)
 	}
 
-	matchingEngine := engine.NewEngine(msgBroker, redisClient)
-	server := rest.NewServer(matchingEngine)
+	matchingEngine := engine.New(msgBroker, redisClient)
+	server := rest.New(matchingEngine)
 
 	cleanup := func() {
 		cancel()

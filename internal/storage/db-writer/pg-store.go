@@ -30,7 +30,7 @@ type DbEngine struct {
 	dbHandler       DBHandler
 }
 
-func RunDBEngine(ctx context.Context, dbHandler DBHandler, cacheClient ExecutionFeeder, maxBatchSize int, batchSize int) error {
+func New(ctx context.Context, dbHandler DBHandler, cacheClient ExecutionFeeder, maxBatchSize int, batchSize int) error {
 	cancelCtx, cancel := context.WithCancel(ctx)
 
 	engine := &DbEngine{
@@ -79,7 +79,7 @@ func (e *DbEngine) startExecWriter() {
 			}
 
 			log.Printf("flushing data.. writing %d executions to db", len(executions))
-			if err := e.flushExecutions(batch); err != nil {
+			if err := e.flushExecutions(executions); err != nil {
 				log.Printf("Unable to flush executions: %v\n", err)
 			}
 

@@ -19,7 +19,7 @@ type Server struct {
 	matcher MatchingEngine
 }
 
-func NewServer(me MatchingEngine) *Server {
+func New(me MatchingEngine) *Server {
 	return &Server{
 		matcher: me,
 	}

@@ -17,7 +17,7 @@ type Client struct {
 	client *redis.Client
 }
 
-func NewMessageBroker() (*Client, error) {
+func New() (*Client, error) {
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "localhost:6379"
@@ -43,7 +43,7 @@ func (c *Client) PublishOrderResponse(ctx context.Context, market string, execRe
 	return nil
 }
 
-func (c *Client) SubscribeToResponsesByBroker(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error {
+func (c *Client) SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error {
 	if market == "" {
 		return status.Error(codes.InvalidArgument, "Symbol must be specified")
 	}

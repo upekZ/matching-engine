@@ -4,17 +4,77 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	rbt "github.com/emirpasic/gods/trees/redblacktree"
 	"github.com/upekZ/matching-engine/internal/models"
 	"log"
 )
+
+type PriceToOrderMap map[float64]*OrderList
+type sellOrders struct {
+	ordersByPrice PriceToOrderMap
+	orderedPrices *rbt.Tree
+}
+
+func newSellContainers() *sellOrders {
+
+	return &sellOrders{
+		ordersByPrice: make(PriceToOrderMap),
+		orderedPrices: rbt.NewWith(models.SellComparator),
+	}
+}
+
+func (s *sellOrders) getContainers() (PriceToOrderMap, *rbt.Tree) {
+	return s.ordersByPrice, s.orderedPrices
+}
+
+type buyOrders struct {
+	ordersByPrice PriceToOrderMap
+	orderedPrices *rbt.Tree
+}
+
+func (b *buyOrders) getContainers() (PriceToOrderMap, *rbt.Tree) {
+	return b.ordersByPrice, b.orderedPrices
+}
+
+func newBuyContainers() *buyOrders {
+
+	return &buyOrders{
+		ordersByPrice: make(PriceToOrderMap),
+		orderedPrices: rbt.NewWith(models.BuyComparator),
+	}
+}
+
+type orderBook struct {
+	market              string
+	sellOrderContainers *sellOrders
+	buyOrderContainers  *buyOrders
+	clientIDs           map[string]*OrderElement
+	handler             models.ExecHandler
+}
+
+func newOrderBook(ctx context.Context, market string, handler models.ExecHandler) chan *models.Order {
+
+	ob := &orderBook{
+		market: market,
+
+		sellOrderContainers: newSellContainers(),
+		buyOrderContainers:  newBuyContainers(),
+
+		clientIDs: make(map[string]*OrderElement),
+		handler:   handler,
+	}
+	channel := make(chan *models.Order, 200)
+	go ob.runOrderBook(ctx, channel)
+
+	return channel
+}
 
 func (ob *orderBook) runOrderBook(ctx context.Context, orderChan chan *models.Order) {
 
 	for {
 		select {
 		case req := <-orderChan:
-
-			req.UpdateNewOrderFields(NewExecHandler(ob.executions))
+			req.OnNewOrderReq(ob.handler)
 
 			if req.ReqType != models.CancelOrder {
 				switch req.Side {
@@ -30,7 +90,9 @@ func (ob *orderBook) runOrderBook(ctx context.Context, orderChan chan *models.Or
 				ob.cancelOrder(req)
 			}
 
-			ob.handleExecutionsFromReq()
+			if err := ob.handler.PublishExecutions(); err != nil {
+				log.Printf("Error publishing executions: %v", err)
+			}
 
 		case <-ctx.Done():
 			return
@@ -47,7 +109,6 @@ func (ob *orderBook) addSellRequest(order *models.Order) {
 }
 
 func (ob *orderBook) processRequest(order *models.Order, returnCmp models.Comparator) {
-
 	order.ExecuteNew()
 
 	if err := ob.validateReqInOB(order); err != nil {
@@ -69,7 +130,6 @@ func (ob *orderBook) cancelOrder(order *models.Order) {
 	order.ExecuteCancelReq()
 	if err := ob.removeOrder(order); err != nil {
 		order.ExecuteReject()
-		log.Printf("failed to cancel order: %v", err)
 		return
 	}
 	order.ExecuteCancel()
@@ -183,26 +243,21 @@ func (ob *orderBook) removeOrder(order *models.Order) error {
 	return nil
 }
 
-func (ob *orderBook) handleExecutionsFromReq() {
-	execReport := make(map[string][]*models.Execution, 2)
-
-	//set and publishing is thread safe (for redis). so publishing by multiple order-books is safe
-	for _, exec := range ob.executions {
-		if err := ob.store.SaveExecution(exec); err != nil {
-			log.Printf("failed to save trades: %v", err)
-		}
-		execReport[exec.ClOrdID] = append(execReport[exec.ClOrdID], exec)
-	}
-	if err := ob.msgBroker.PublishOrderResponse(context.Background(), ob.market, execReport); err != nil {
-		log.Printf("failed to publish order response: %v", err)
-	}
-
-	ob.executions = nil
-}
-
 func (ob *orderBook) executeTrade(order *models.Order, bookOrder *models.Order, tradeQty int, price float64) {
 	bookOrder.ExecuteTrade(tradeQty, price)
 	order.ExecuteTrade(tradeQty, price)
 
 	//ToDo publish Trades for MarketData
+}
+
+func (ob *orderBook) getOBContainers(side models.OrderSide) (PriceToOrderMap, *rbt.Tree) {
+	switch side {
+	case models.BuyOrder:
+		return ob.buyOrderContainers.getContainers()
+	case models.SellOrder:
+		return ob.sellOrderContainers.getContainers()
+
+	default:
+		return nil, nil
+	}
 }

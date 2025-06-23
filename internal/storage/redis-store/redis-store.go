@@ -13,7 +13,7 @@ type Client struct {
 	client *redis.Client
 }
 
-func NewCacheClient() (*Client, error) {
+func New() (*Client, error) {
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "localhost:6379"

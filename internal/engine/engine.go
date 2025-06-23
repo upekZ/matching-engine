@@ -7,33 +7,26 @@ import (
 	"sync"
 )
 
-type ExecStore interface {
-	SaveExecution(exec *models.Execution) error
-}
-
-type MessageBroker interface {
-	PublishOrderResponse(ctx context.Context, market string, exec models.ExecutionReport) error
-	SubscribeToResponsesByBroker(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error
+type HandlerFactory interface {
+	NewExecHandler(market string) models.ExecHandler
 }
 
 type Engine struct {
-	reqChannels sync.Map
-	MsgBroker   MessageBroker
-	CacheClient ExecStore
+	reqChannels    sync.Map
+	HandlerFactory HandlerFactory
 }
 
-func NewEngine(msgBroker MessageBroker, cacheClient ExecStore) *Engine {
+func New(handlerFactory HandlerFactory) *Engine {
 	return &Engine{
-		reqChannels: sync.Map{},
-		MsgBroker:   msgBroker,
-		CacheClient: cacheClient,
+		reqChannels:    sync.Map{},
+		HandlerFactory: handlerFactory,
 	}
 }
 
 func (e *Engine) OnNewRequest(orderReq *models.Order) models.Order {
 
-	if err := orderReq.ValidateReq(); err != nil {
-		orderReq.ExecuteReject()
+	if orderReq.Symbol == "" {
+		log.Println("invalid symbol. request rejected")
 		return *orderReq
 	}
 
@@ -49,21 +42,11 @@ func (e *Engine) OnNewRequest(orderReq *models.Order) models.Order {
 
 func (e *Engine) addNewOrderBook(symbol string) chan *models.Order {
 
-	reqChannel := newOrderBook(context.Background(), symbol, e.CacheClient, e.MsgBroker)
+	reqChannel := newOrderBook(context.Background(), symbol, e.HandlerFactory.NewExecHandler(symbol))
 
 	if loadedChannel, exists := e.reqChannels.LoadOrStore(symbol, reqChannel); exists {
 		reqChannel = loadedChannel.(chan *models.Order)
 	}
 
 	return reqChannel
-}
-
-func (e *Engine) SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error {
-
-	if err := e.MsgBroker.SubscribeToResponsesByBroker(ctx, market, responseChannel); err != nil {
-		log.Println("Subscription to request-response failed")
-		return err
-	}
-	log.Printf("New subscription to Market:%s\n", market)
-	return nil
 }

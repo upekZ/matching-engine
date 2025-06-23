@@ -10,18 +10,18 @@ import (
 	"net"
 )
 
-type GlobalEngine interface {
+type MsgBroker interface {
 	SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error
 }
 
 type OrderServiceHandler struct {
-	engine GlobalEngine
+	broker MsgBroker
 	UnimplementedOrderServiceServer
 }
 
-func NewServer(port string, eng GlobalEngine) error {
+func New(port string, broker MsgBroker) error {
 	srv := grpc.NewServer()
-	RegisterOrderServiceServer(srv, &OrderServiceHandler{engine: eng})
+	RegisterOrderServiceServer(srv, &OrderServiceHandler{broker: broker})
 	go func() {
 		lis, err := net.Listen("tcp", ":"+port)
 		if err != nil {
@@ -44,7 +44,7 @@ func (s *OrderServiceHandler) SubscribeOrderUpdates(req *MarketRequest, stream O
 	errorChannel := make(chan error, 1)
 
 	go func() {
-		err := s.engine.SubscribeToResponses(ctx, req.Market, responseChannel)
+		err := s.broker.SubscribeToResponses(ctx, req.Market, responseChannel)
 		if err != nil {
 			errorChannel <- err
 		}
