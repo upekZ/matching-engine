@@ -1,25 +1,60 @@
 services:
   app:
-    environment:
-      - REDIS_ADDR=redis:6379
-      - POSTGRES_ADDR=postgres:5432
     build:
       context: ..
       dockerfile: Dockerfile
+    environment:
+      - REDIS_ADDR=redis:6379
+      - POSTGRES_CONN=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
     ports:
       - "3000:3000"
       - "8080:8080"
+    volumes:
+      - ../:/app
+    command: air -c .air.toml
     depends_on:
       - redis
       - postgres
+    networks:
+      - app-network
+
+  matching-engine-integration:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      - POSTGRES_CONN=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
+      - REDIS_ADDR=redis:6379
+    command: ["go", "test", "-v", "./tests/integration_test.go"]
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - app-network
+
+  matching-engine-unit-tests:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      - POSTGRES_CONN=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
+      - REDIS_ADDR=redis:6379
+    command: ["go", "test", "-v", "./internal/engine"]
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - app-network
 
   redis:
-    image: "redis:alpine"
+    image: redis:alpine
     ports:
       - "6379:6379"
+    networks:
+      - app-network
 
   postgres:
-    image: "postgres:13"
+    image: postgres:13
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -28,3 +63,9 @@ services:
       - "5432:5432"
     volumes:
       - ../internal/storage/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

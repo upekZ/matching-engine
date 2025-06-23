@@ -201,7 +201,6 @@ func (ob *orderBook) matchOrdersInPrice(price float64, order *models.Order) []*m
 		} else {
 			tradeQty = order.AvailableQty
 		}
-
 		ob.executeTrade(order, bookOrder, tradeQty, price)
 
 		e = e.Next()
@@ -211,6 +210,10 @@ func (ob *orderBook) matchOrdersInPrice(price float64, order *models.Order) []*m
 }
 
 func (ob *orderBook) validateReqInOB(order *models.Order) error {
+
+	if err := order.ValidateReq(); err != nil {
+		return err
+	}
 
 	if order.ReqType != models.CancelOrder {
 		if _, exists := ob.clientIDs[order.ClientID]; exists {

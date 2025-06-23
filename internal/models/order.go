@@ -71,6 +71,8 @@ func (o *Order) OnNewOrderReq(execHandler ExecHandler) {
 	o.ID = uuid.New().String()
 	o.Timestamp = time.Now().Unix()
 	o.Status = NewPendingOrderState
+	o.AvailableQty = o.Quantity
+	o.FilledQty = 0
 
 	o.execHandler = execHandler
 }
