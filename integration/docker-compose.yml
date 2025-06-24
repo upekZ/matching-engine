@@ -4,8 +4,8 @@ services:
       context: ..
       dockerfile: Dockerfile
     environment:
+      - POSTGRES_ADDR=postgres:5432
       - REDIS_ADDR=redis:6379
-      - POSTGRES_CONN=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
     ports:
       - "3000:3000"
       - "8080:8080"
@@ -23,7 +23,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     environment:
-      - POSTGRES_CONN=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
+      - POSTGRES_ADDR=postgres:5432
       - REDIS_ADDR=redis:6379
     command: ["go", "test", "-v", "./tests/integration_test.go"]
     depends_on:
@@ -37,7 +37,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     environment:
-      - POSTGRES_CONN=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
+      - POSTGRES_ADDR=postgres:5432
       - REDIS_ADDR=redis:6379
     command: ["go", "test", "-v", "./internal/engine"]
     depends_on:
@@ -60,7 +60,7 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=postgres
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - ../internal/storage/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:

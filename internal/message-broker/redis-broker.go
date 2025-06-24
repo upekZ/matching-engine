@@ -61,11 +61,13 @@ func (c *Client) SubscribeToResponses(ctx context.Context, market string, respon
 			if errors.Is(err, context.Canceled) {
 				return nil // Client disconnected
 			}
+			log.Printf("Error receiving message: %v", err)
 			return status.Errorf(codes.Internal, "Failed to receive message: %v", err)
 		}
 
 		var modelResp models.ExecutionReport
 		if err := json.Unmarshal([]byte(msg.Payload), &modelResp); err != nil {
+			log.Printf("Error unmarshalling response: %v", err)
 			log.Printf("Failed to unmarshal response: %v", err)
 			continue
 		}

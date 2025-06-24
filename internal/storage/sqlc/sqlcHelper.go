@@ -55,6 +55,7 @@ func (q *Queries) InsertExecution(ctx context.Context, exec *models.Execution) e
 func CreateDBHandler() *Queries {
 	connAddr := os.Getenv("POSTGRES_ADDR")
 	if connAddr == "" {
+		log.Printf("environment variable POSTGRES_ADDR not set")
 		connAddr = "localhost:5432"
 	}
 
