@@ -109,14 +109,36 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 	client := &http.Client{Timeout: 5 * time.Second}
 	baseURL := "http://localhost:3000"
 
-	// Clear Redis before each test to avoid interference
-	cleanCache := func() {
+	// Clear Redis and order book before each test to avoid interference
+	cleanCache := func(symbol string) {
 		_, keys, err := redisClient.GetExecutions(context.Background())
 		if err == nil && len(keys) > 0 {
 			if err := redisClient.ClearStoredExecutions(context.Background(), keys); err != nil {
 				t.Logf("Failed to clear Redis cache: %v", err)
 			}
 		}
+
+		// Clear buy orders
+		buyClearOrder := models.Order{
+			ClientID: "buy-order-clearer-" + uuid.New().String(),
+			Symbol:   symbol,
+			Side:     models.SellOrder,
+			Quantity: 100,
+			OrdType:  models.MarketOrder,
+			ReqType:  models.NewOrder,
+		}
+		submitOrder(t, client, baseURL, buyClearOrder)
+
+		// Clear sell orders
+		sellClearOrder := models.Order{
+			ClientID: "sell-order-clearer-" + uuid.New().String(),
+			Symbol:   symbol,
+			Side:     models.BuyOrder,
+			Quantity: 100,
+			OrdType:  models.MarketOrder,
+			ReqType:  models.NewOrder,
+		}
+		submitOrder(t, client, baseURL, sellClearOrder)
 	}
 
 	symbol := "BTC-USD"
@@ -148,7 +170,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	t.Run("LimitOrderBuySellMatch", func(t *testing.T) {
-		cleanCache()
+		cleanCache(symbol)
 		clientID1 := uuid.New().String()
 		clientID2 := uuid.New().String()
 
@@ -175,7 +197,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 		submitOrder(t, client, baseURL, sellOrder)
 
 		validateExecutions(t, responseChannel, 2, func(trade *models.Execution) bool {
-			if trade.ExecType == models.ExecuteTrade && (trade.ClOrdID == clientID1 || trade.ClOrdID == clientID2) {
+			if trade.ExecType == models.ExecuteFill && (trade.ClOrdID == clientID1 || trade.ClOrdID == clientID2) {
 				assert.Equal(t, models.Filled, trade.OrdStatus, "Expected ord_status Filled for cl_ord_id %s", trade.ClOrdID)
 				assert.Equal(t, 10, trade.OrderQty, "Expected order_qty 10 for cl_ord_id %s", trade.ClOrdID)
 				assert.Equal(t, 10, trade.LastQty, "Expected last_qty 10 for cl_ord_id %s", trade.ClOrdID)
@@ -188,7 +210,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 	})
 
 	t.Run("MarketOrderBuyWithSellLimit", func(t *testing.T) {
-		cleanCache()
+		cleanCache(symbol)
 		clientID1 := uuid.New().String()
 		clientID2 := uuid.New().String()
 
@@ -214,7 +236,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 		submitOrder(t, client, baseURL, buyOrder)
 
 		validateExecutions(t, responseChannel, 2, func(trade *models.Execution) bool {
-			if trade.ExecType == models.ExecuteTrade {
+			if trade.ExecType == models.ExecuteFill {
 				if trade.ClOrdID == clientID2 {
 					assert.Equal(t, models.Filled, trade.OrdStatus, "Expected ord_status Filled for cl_ord_id %s", trade.ClOrdID)
 					assert.Equal(t, 10, trade.OrderQty, "Expected order_qty 10 for cl_ord_id %s", trade.ClOrdID)
@@ -235,30 +257,10 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 			}
 			return false
 		})
-
-		sellClearOrder := models.Order{
-			ClientID: "sell-order-clearer-1",
-			Symbol:   symbol,
-			Side:     models.BuyOrder,
-			Quantity: 100,
-			OrdType:  models.MarketOrder,
-			ReqType:  models.NewOrder,
-		}
-		submitOrder(t, client, baseURL, sellClearOrder)
-
-		buyClearOrder := models.Order{
-			ClientID: "buy-order-clearer-1",
-			Symbol:   symbol,
-			Side:     models.SellOrder,
-			Quantity: 100,
-			OrdType:  models.MarketOrder,
-			ReqType:  models.NewOrder,
-		}
-		submitOrder(t, client, baseURL, buyClearOrder)
 	})
 
 	t.Run("MarketOrderSellWithBuyLimit", func(t *testing.T) {
-		cleanCache()
+		cleanCache(symbol)
 		clientID1 := uuid.New().String()
 		clientID2 := uuid.New().String()
 
@@ -284,7 +286,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 		submitOrder(t, client, baseURL, sellOrder)
 
 		validateExecutions(t, responseChannel, 2, func(trade *models.Execution) bool {
-			if trade.ExecType == models.ExecuteTrade {
+			if trade.ExecType == models.ExecuteFill {
 				if trade.ClOrdID == clientID2 {
 					assert.Equal(t, models.Filled, trade.OrdStatus, "Expected ord_status Filled for cl_ord_id %s", trade.ClOrdID)
 					assert.Equal(t, 15, trade.OrderQty, "Expected order_qty 15 for cl_ord_id %s", trade.ClOrdID)
@@ -308,7 +310,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 	})
 
 	t.Run("CancelOrder", func(t *testing.T) {
-		cleanCache()
+		cleanCache(symbol)
 		clientID := uuid.New().String()
 
 		buyOrder := models.Order{
@@ -341,7 +343,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 	})
 
 	t.Run("InvalidOrder", func(t *testing.T) {
-		cleanCache()
+		cleanCache(symbol)
 		clientID := uuid.New().String()
 
 		invalidOrder := models.Order{
@@ -364,7 +366,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 	})
 
 	t.Run("PartialMatching", func(t *testing.T) {
-		cleanCache()
+		cleanCache(symbol)
 		clientID1 := uuid.New().String()
 		clientID2 := uuid.New().String()
 
@@ -391,7 +393,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 		submitOrder(t, client, baseURL, buyOrder)
 
 		validateExecutions(t, responseChannel, 2, func(trade *models.Execution) bool {
-			if trade.ExecType == models.ExecuteTrade {
+			if trade.ExecType == models.ExecuteFill {
 				if trade.ClOrdID == clientID2 {
 					assert.Equal(t, models.Filled, trade.OrdStatus, "Expected ord_status Filled for cl_ord_id %s", trade.ClOrdID)
 					assert.Equal(t, 8, trade.OrderQty, "Expected order_qty 8 for cl_ord_id %s", trade.ClOrdID)
@@ -412,20 +414,10 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 			}
 			return false
 		})
-
-		sellClearOrder := models.Order{
-			ClientID: "clear-sell-order-1",
-			Symbol:   symbol,
-			Side:     models.BuyOrder,
-			Quantity: 17,
-			OrdType:  models.MarketOrder,
-			ReqType:  models.NewOrder,
-		}
-		submitOrder(t, client, baseURL, sellClearOrder)
 	})
 
 	t.Run("MatchTwoOrders", func(t *testing.T) {
-		cleanCache()
+		cleanCache(symbol)
 		clientID1 := uuid.New().String()
 		clientID2 := uuid.New().String()
 		clientID3 := uuid.New().String()
@@ -463,7 +455,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 		submitOrder(t, client, baseURL, buyOrder)
 
 		validateExecutions(t, responseChannel, 3, func(trade *models.Execution) bool {
-			if trade.ExecType == models.ExecuteTrade {
+			if trade.ExecType == models.ExecuteFill {
 				if trade.ClOrdID == clientID3 && trade.OrdStatus == models.Filled {
 					assert.Equal(t, 20, trade.OrderQty, "Expected order_qty 20 for cl_ord_id %s", trade.ClOrdID)
 					return true
@@ -482,7 +474,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 	})
 
 	t.Run("MatchTwoOrdersAndPartialMatch", func(t *testing.T) {
-		cleanCache()
+		cleanCache(symbol)
 		clientID1 := uuid.New().String()
 		clientID2 := uuid.New().String()
 		clientID3 := uuid.New().String()
@@ -532,7 +524,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 		submitOrder(t, client, baseURL, buyOrder)
 
 		validateExecutions(t, responseChannel, 4, func(trade *models.Execution) bool {
-			if trade.ExecType == models.ExecuteTrade {
+			if trade.ExecType == models.ExecuteFill {
 				if trade.ClOrdID == clientID4 && trade.OrdStatus == models.Filled {
 					assert.Equal(t, 35, trade.OrderQty, "Expected order_qty 35 for cl_ord_id %s", trade.ClOrdID)
 					return true
@@ -556,30 +548,10 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 			}
 			return false
 		})
-
-		buyOrderCleaner := models.Order{
-			ClientID: "clear-buy-orders-2",
-			Symbol:   symbol,
-			Side:     models.SellOrder,
-			Quantity: 100,
-			OrdType:  models.MarketOrder,
-			ReqType:  models.NewOrder,
-		}
-		submitOrder(t, client, baseURL, buyOrderCleaner)
-
-		sellOrderCleaner := models.Order{
-			ClientID: "clear-sell-orders-2",
-			Symbol:   symbol,
-			Side:     models.BuyOrder,
-			Quantity: 100,
-			OrdType:  models.MarketOrder,
-			ReqType:  models.NewOrder,
-		}
-		submitOrder(t, client, baseURL, sellOrderCleaner)
 	})
 
 	t.Run("ZeroQuantityOrder", func(t *testing.T) {
-		cleanCache()
+		cleanCache(symbol)
 		clientID := uuid.New().String()
 
 		invalidOrder := models.Order{
@@ -602,7 +574,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 	})
 
 	t.Run("ExtremePriceOrder", func(t *testing.T) {
-		cleanCache()
+		cleanCache(symbol)
 		clientID1 := uuid.New().String()
 		clientID2 := uuid.New().String()
 
@@ -637,7 +609,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 	})
 
 	t.Run("ConcurrentOrders", func(t *testing.T) {
-		cleanCache()
+		cleanCache(symbol)
 		clientID1 := uuid.New().String()
 		clientID2 := uuid.New().String()
 		clientID3 := uuid.New().String()
@@ -690,7 +662,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 		wg.Wait()
 
 		validateExecutions(t, responseChannel, 3, func(trade *models.Execution) bool {
-			if trade.ExecType == models.ExecuteTrade {
+			if trade.ExecType == models.ExecuteFill {
 				assert.Contains(t, []models.OrderStatus{models.Filled, models.PartiallyFilled}, trade.OrdStatus, "Expected ord_status Filled or PartiallyFilled for cl_ord_id %s", trade.ClOrdID)
 				return true
 			}
@@ -699,7 +671,8 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 	})
 
 	t.Run("DifferentSymbolOrder", func(t *testing.T) {
-		cleanCache()
+		cleanCache(symbol1)
+		cleanCache(symbol2)
 		clientID1 := uuid.New().String()
 		clientID2 := uuid.New().String()
 
@@ -754,7 +727,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 	})
 
 	t.Run("MultiplePartialMatches", func(t *testing.T) {
-		cleanCache()
+		cleanCache(symbol)
 		clientID1 := uuid.New().String()
 		clientID2 := uuid.New().String()
 		clientID3 := uuid.New().String()
@@ -804,7 +777,7 @@ func TestIntegrationMatchingEngine(t *testing.T) {
 		submitOrder(t, client, baseURL, buyOrder)
 
 		validateExecutions(t, responseChannel, 4, func(trade *models.Execution) bool {
-			if trade.ExecType == models.ExecuteTrade {
+			if trade.ExecType == models.ExecuteFill {
 				if trade.ClOrdID == clientID4 {
 					assert.Contains(t, []models.OrderStatus{models.Filled, models.PartiallyFilled}, trade.OrdStatus, "Expected ord_status Filled or PartiallyFilled for cl_ord_id %s", trade.ClOrdID)
 					return true

@@ -2,122 +2,230 @@ package engine
 
 import (
 	"context"
-	"errors"
+	"github.com/stretchr/testify/assert"
 	"github.com/upekZ/matching-engine/internal/models"
 	"testing"
+	"time"
 )
 
-type MockCacheStore struct {
-	err error
+type mockExecHandler struct {
+	executions []*models.Execution
+	publishErr error
 }
 
-func (m *MockCacheStore) SaveExecution(exec *models.Execution) error {
-	return m.err
+func (m *mockExecHandler) AddExecution(exec *models.Execution) {
+	m.executions = append(m.executions, exec)
 }
 
-type MockMessageBroker struct {
-	publishErr   error
-	subscribeErr error
-}
-
-func (m *MockMessageBroker) PublishOrderResponse(ctx context.Context, market string, exec models.ExecutionReport) error {
+func (m *mockExecHandler) PublishExecutions() error {
 	return m.publishErr
 }
 
-func (m *MockMessageBroker) SubscribeToResponsesByBroker(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error {
-	return m.subscribeErr
+type mockHandlerFactory struct {
+	handler *mockExecHandler
 }
 
-func TestEngine_AddNewRequest(t *testing.T) {
-	t.Run("LimitOrder", func(t *testing.T) {
-		engine := New(&MockMessageBroker{}, &MockCacheStore{})
-		order := &models.Order{ClientID: "client1", Symbol: "SYM1", ReqType: models.NewOrder, OrdType: models.LimitOrder, Side: models.BuyOrder, Price: 100.0, Quantity: 10}
-		result := engine.OnNewRequest(order)
-		if result.ClientID != "client1" {
-			t.Errorf("Expected ClientID 'client1', got %s", result.ClientID)
-		}
-	})
-
-	t.Run("UnknownOrderType", func(t *testing.T) {
-		engine := New(&MockMessageBroker{}, &MockCacheStore{})
-		order := &models.Order{ClientID: "client1", Symbol: "SYM1", ReqType: models.NewOrder, OrdType: "UNKNOWN", Side: models.BuyOrder}
-		result := engine.OnNewRequest(order)
-		if result.Status != models.Rejected {
-			t.Errorf("Expected Rejected status, got %s", result.Status)
-		}
-	})
+func (m *mockHandlerFactory) NewExecHandler(_ string) models.ExecHandler {
+	return m.handler
 }
 
-func TestEngine_addNewOrderBook(t *testing.T) {
-	engine := New(&MockMessageBroker{}, &MockCacheStore{})
-	channel := engine.addNewOrderBook("SYM1")
-	if channel == nil {
-		t.Error("Expected non-nil channel")
+func submitOrder(reqChannel chan *models.Order, req *models.Order) {
+	reqChannel <- req
+	time.Sleep(10 * time.Millisecond)
+}
+
+func setupOrderBook(t *testing.T, market string) (*orderBook, chan *models.Order, *mockExecHandler) {
+	handler := &mockExecHandler{}
+	ob := &orderBook{
+		market:              market,
+		sellOrderContainers: newSellContainers(),
+		buyOrderContainers:  newBuyContainers(),
+		clientIDs:           make(map[string]*OrderElement),
+		handler:             handler,
 	}
-	_, loaded := engine.orderBooks.Load("SYM1")
-	if !loaded {
-		t.Error("Expected order book to be loaded")
+	ch := make(chan *models.Order, 200)
+	go ob.runOrderBook(context.Background(), ch)
+	return ob, ch, handler
+}
+
+func setupEngine(t *testing.T) (*Engine, *mockHandlerFactory) {
+	handler := &mockExecHandler{}
+	factory := &mockHandlerFactory{handler: handler}
+	return New(factory), factory
+}
+
+func TestNewOrderBook(t *testing.T) {
+	handler := &mockExecHandler{}
+	market := "BTC-USD"
+	ch := newOrderBook(context.Background(), market, handler)
+
+	assert.NotNil(t, ch, "Channel should be created")
+	assert.Equal(t, 200, cap(ch), "Channel capacity should be 200")
+}
+
+func TestOrderBook_AddBuyRequest(t *testing.T) {
+	ob, ch, _ := setupOrderBook(t, "BTC-USD")
+	defer close(ch)
+
+	order := &models.Order{
+		ClientID: "1",
+		Symbol:   "BTC-USD",
+		Side:     models.BuyOrder,
+		OrdType:  models.LimitOrder,
+		Price:    100.0,
+		Quantity: 10,
+		ReqType:  models.NewOrder,
 	}
+	submitOrder(ch, order)
+
+	priceMap, _ := ob.buyOrderContainers.getContainers()
+	assert.NotNil(t, priceMap[100.0], "Order should be added to price map")
+	assert.Equal(t, 1, len(ob.clientIDs), "Client ID should be registered")
 }
 
-func TestEngine_generateOrderFromReq(t *testing.T) {
-	engine := New(&MockMessageBroker{}, &MockCacheStore{})
-	baseParams := &models.BaseParams{clientID: "client1", symbol: "SYM1", reqType: models.NewOrder}
-	t.Run("LimitOrder", func(t *testing.T) {
-		order := &models.Order{OrdType: models.LimitOrder, Side: models.BuyOrder, Price: 100.0, Quantity: 10}
-		newOrder := engine.createOrderFromReq(order, baseParams)
-		if newOrder == nil || newOrder.OrdType != models.LimitOrder {
-			t.Errorf("Expected LimitOrder, got %v", newOrder)
-		}
-	})
-	t.Run("UnknownReqType", func(t *testing.T) {
-		order := &models.Order{ReqType: "UNKNOWN"}
-		newOrder := engine.createOrderFromReq(order, baseParams)
-		if newOrder != nil {
-			t.Error("Expected nil for unknown request type")
-		}
-	})
-}
+func TestOrderBook_AddSellRequest(t *testing.T) {
+	ob, ch, _ := setupOrderBook(t, "BTC-USD")
+	defer close(ch)
 
-func TestEngine_SubscribeToResponses(t *testing.T) {
-	t.Run("SuccessfulSubscription", func(t *testing.T) {
-		ctx := context.Background()
-		engine := New(&MockMessageBroker{}, &MockCacheStore{})
-		responseChannel := make(chan models.ExecutionReport, 1)
-		err := engine.SubscribeToResponses(ctx, "market1", responseChannel)
-		if err != nil {
-			t.Errorf("Expected no error, got %v", err)
-		}
-	})
-
-	t.Run("BrokerError", func(t *testing.T) {
-		ctx := context.Background()
-		engine := New(&MockMessageBroker{subscribeErr: errors.New("broker error")}, &MockCacheStore{})
-		responseChannel := make(chan models.ExecutionReport, 1)
-		err := engine.SubscribeToResponses(ctx, "market1", responseChannel)
-		if err == nil || err.Error() != "broker error" {
-			t.Errorf("Expected 'broker error', got %v", err)
-		}
-	})
-}
-
-func TestOrderBook_AddToOrderBook(t *testing.T) {
-	ob := newOrderBook("market1")
-	order := &models.Order{ID: "order1", ClientID: "client1", Side: models.BuyOrder, Price: 100.0, Quantity: 10}
-	ob.addToOrderBook(order)
-	_, ok := ob.clientIDs["client1"]
-	if !ok {
-		t.Error("Expected order to be indexed")
+	order := &models.Order{
+		ClientID: "1",
+		Symbol:   "BTC-USD",
+		Side:     models.SellOrder,
+		OrdType:  models.LimitOrder,
+		Price:    100.0,
+		Quantity: 10,
+		ReqType:  models.NewOrder,
 	}
+
+	submitOrder(ch, order)
+
+	priceMap, _ := ob.sellOrderContainers.getContainers()
+	assert.NotNil(t, priceMap[100.0], "Order should be added to price map")
+	assert.Equal(t, 1, len(ob.clientIDs), "Client ID should be registered")
+}
+
+func TestOrderBook_CancelOrder(t *testing.T) {
+	ob, ch, handler := setupOrderBook(t, "BTC-USD")
+	defer close(ch)
+	order := &models.Order{
+		ClientID: "1",
+		Symbol:   "BTC-USD",
+		Side:     models.BuyOrder,
+		OrdType:  models.LimitOrder,
+		Price:    100.0,
+		Quantity: 10,
+		ReqType:  models.NewOrder,
+	}
+	submitOrder(ch, order)
+	for len(handler.executions) == 0 {
+	}
+
+	cancelOrder := &models.Order{
+		ClientID: "1",
+		Symbol:   "BTC-USD",
+		ReqType:  models.CancelOrder,
+	}
+	submitOrder(ch, cancelOrder)
+	for len(handler.executions) < 2 {
+	}
+
+	assert.Equal(t, 0, len(ob.clientIDs), "Client ID should be removed")
+	priceMap, _ := ob.buyOrderContainers.getContainers()
+	assert.Nil(t, priceMap[100.0], "Price bucket should be removed")
 }
 
 func TestOrderBook_MatchOrder(t *testing.T) {
-	ob := newOrderBook("market1")
-	buyOrder := &models.Order{ID: "buy1", ClientID: "client1", Side: models.BuyOrder, Price: 100.0, Quantity: 10, Status: models.NewOrderState}
-	sellOrder := &models.Order{ID: "sell1", ClientID: "client2", Side: models.SellOrder, Price: 100.0, Quantity: 5, Status: models.NewOrderState}
-	ob.addToOrderBook(sellOrder)
-	ob.matchOrder(buyOrder, models.Greater)
-	if len(ob.executions) == 0 {
-		t.Error("Expected executions from match")
+	ob, ch, handler := setupOrderBook(t, "BTCUSD")
+	defer close(ch)
+	sellOrder := &models.Order{
+		ClientID: "1",
+		Symbol:   "BTC-USD",
+		Side:     models.SellOrder,
+		OrdType:  models.LimitOrder,
+		Price:    100.0,
+		Quantity: 10,
+		ReqType:  models.NewOrder,
 	}
+	submitOrder(ch, sellOrder)
+
+	for len(handler.executions) == 0 {
+	}
+
+	// Add matching buy order
+	buyOrder := &models.Order{
+		ClientID: "2",
+		Symbol:   "BTC-USD",
+		Side:     models.BuyOrder,
+		OrdType:  models.LimitOrder,
+		Price:    100.0,
+		Quantity: 10,
+		ReqType:  models.NewOrder,
+	}
+	submitOrder(ch, buyOrder)
+
+	for len(handler.executions) < 3 {
+	}
+
+	assert.Equal(t, 0, len(ob.clientIDs), "All orders should be matched and removed")
+	assert.Equal(t, models.Filled, sellOrder.Status, "Sell order should be filled")
+	assert.Equal(t, models.Filled, buyOrder.Status, "Buy order should be filled")
+}
+
+func TestEngine_OnNewRequest(t *testing.T) {
+	engine, factory := setupEngine(t)
+
+	order := &models.Order{
+		Symbol:   "BTC-USD",
+		ClientID: "1",
+		Side:     models.BuyOrder,
+		OrdType:  models.LimitOrder,
+		Price:    100.0,
+		Quantity: 10,
+		ReqType:  models.NewOrder,
+	}
+
+	result := engine.OnNewRequest(order)
+
+	assert.Equal(t, order, &result, "Returned order should match input")
+	_, exists := engine.reqChannels.Load("BTC-USD")
+	assert.True(t, exists, "Order book channel should be created")
+	assert.Equal(t, 1, len(factory.handler.executions), "Execution should be recorded")
+}
+
+func TestEngine_OnNewRequest_InvalidSymbol(t *testing.T) {
+	engine, _ := setupEngine(t)
+
+	order := &models.Order{
+		Symbol:   "",
+		ClientID: "1",
+	}
+
+	result := engine.OnNewRequest(order)
+
+	assert.Equal(t, order, &result, "Returned order should match input")
+	_, exists := engine.reqChannels.Load("")
+	assert.False(t, exists, "No channel should be created for empty symbol")
+}
+
+func TestOrderList_PushAndPop(t *testing.T) {
+	list := NewOrderList()
+	order := &models.Order{ClientID: "1"}
+
+	element := list.Push(order)
+	assert.Equal(t, order, element.Value(), "Pushed order should be retrievable")
+
+	popped := list.Pop()
+	assert.Equal(t, order, popped.Value(), "Popped order should match pushed")
+	assert.Equal(t, 0, list.Len(), "List should be empty after pop")
+}
+
+func TestOrderList_Remove(t *testing.T) {
+	list := NewOrderList()
+	order := &models.Order{ClientID: "1"}
+
+	element := list.Push(order)
+	list.Remove(element)
+
+	assert.Equal(t, 0, list.Len(), "List should be empty after remove")
+	assert.Nil(t, list.Front(), "Front should return nil for empty list")
 }

@@ -76,7 +76,9 @@ func (ob *orderBook) runOrderBook(ctx context.Context, orderChan chan *models.Or
 		case req := <-orderChan:
 			req.OnNewOrderReq(ob.handler)
 
-			if req.ReqType != models.CancelOrder {
+			switch req.ReqType {
+
+			case models.NewOrder:
 				switch req.Side {
 				case models.SellOrder:
 					ob.addSellRequest(req)
@@ -86,8 +88,13 @@ func (ob *orderBook) runOrderBook(ctx context.Context, orderChan chan *models.Or
 					log.Printf("Unknown order[%s] side %s", req.ClientID, req.Side)
 					continue
 				}
-			} else {
+
+			case models.CancelOrder:
 				ob.cancelOrder(req)
+
+			default:
+				req.ExecuteReject()
+				log.Printf("Unknown order[%s] type %s", req.ClientID, req.ReqType)
 			}
 
 			if err := ob.handler.PublishExecutions(); err != nil {

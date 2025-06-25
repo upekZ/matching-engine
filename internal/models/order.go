@@ -194,7 +194,7 @@ func (o *Order) ExecuteTrade(qty int, price float64) {
 	}
 
 	o.execHandler.AddExecution(&Execution{
-		ExecType:     ExecuteTrade,
+		ExecType:     ExecuteFill,
 		OrdStatus:    o.Status,
 		ClOrdID:      o.ClientID,
 		OrderID:      o.ID,
