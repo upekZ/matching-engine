@@ -3,7 +3,6 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-    image: app:latest
     environment:
       - POSTGRES_ADDR=postgres:5432
       - REDIS_ADDR=redis:6379
@@ -20,7 +19,7 @@ services:
       - app-network
 
   matching-engine-integration:
-    image: app:latest
+    image: app
     environment:
       - POSTGRES_ADDR=postgres:5432
       - REDIS_ADDR=redis:6379
@@ -32,7 +31,7 @@ services:
       - app-network
 
   matching-engine-unit-tests:
-    image: app:latest
+    image: app
     environment:
       - POSTGRES_ADDR=postgres:5432
       - REDIS_ADDR=redis:6379

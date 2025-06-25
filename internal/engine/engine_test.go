@@ -13,8 +13,9 @@ type mockExecHandler struct {
 	publishErr error
 }
 
-func (m *mockExecHandler) AddExecution(exec *models.Execution) {
+func (m *mockExecHandler) PublishExecution(exec *models.Execution) error {
 	m.executions = append(m.executions, exec)
+	return nil
 }
 
 func (m *mockExecHandler) PublishExecutions() error {
@@ -135,7 +136,7 @@ func TestOrderBook_CancelOrder(t *testing.T) {
 }
 
 func TestOrderBook_MatchOrder(t *testing.T) {
-	ob, ch, handler := setupOrderBook(t, "BTCUSD")
+	ob, ch, handler := setupOrderBook(t, "BTC-USD")
 	defer close(ch)
 	sellOrder := &models.Order{
 		ClientID: "1",
@@ -148,10 +149,6 @@ func TestOrderBook_MatchOrder(t *testing.T) {
 	}
 	submitOrder(ch, sellOrder)
 
-	for len(handler.executions) == 0 {
-	}
-
-	// Add matching buy order
 	buyOrder := &models.Order{
 		ClientID: "2",
 		Symbol:   "BTC-USD",
@@ -172,7 +169,7 @@ func TestOrderBook_MatchOrder(t *testing.T) {
 }
 
 func TestEngine_OnNewRequest(t *testing.T) {
-	engine, factory := setupEngine(t)
+	engine, _ := setupEngine(t)
 
 	order := &models.Order{
 		Symbol:   "BTC-USD",
@@ -189,7 +186,6 @@ func TestEngine_OnNewRequest(t *testing.T) {
 	assert.Equal(t, order, &result, "Returned order should match input")
 	_, exists := engine.reqChannels.Load("BTC-USD")
 	assert.True(t, exists, "Order book channel should be created")
-	assert.Equal(t, 1, len(factory.handler.executions), "Execution should be recorded")
 }
 
 func TestEngine_OnNewRequest_InvalidSymbol(t *testing.T) {

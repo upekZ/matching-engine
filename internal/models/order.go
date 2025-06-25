@@ -44,8 +44,7 @@ const (
 )
 
 type ExecHandler interface {
-	AddExecution(exec *Execution)
-	PublishExecutions() error
+	PublishExecution(exec *Execution) error
 }
 
 type Order struct {
@@ -123,7 +122,7 @@ func (o *Order) ValidateReq() error {
 
 func (o *Order) ExecuteNew() {
 	o.Status = NewOrderState
-	o.execHandler.AddExecution(&Execution{
+	if err := o.execHandler.PublishExecution(&Execution{
 		ExecType:     ExecuteNew,
 		OrdStatus:    o.Status,
 		ClOrdID:      o.ClientID,
@@ -139,12 +138,14 @@ func (o *Order) ExecuteNew() {
 		ExecID:       uuid.New().String(),
 		TransactTime: time.Now().Unix(),
 		OrdType:      o.OrdType,
-	})
+	}); err != nil {
+		log.Printf("error publishing new order: %s", err.Error())
+	}
 }
 
 func (o *Order) ExecuteCancelReq() {
 	o.Status = PendingCancel
-	o.execHandler.AddExecution(&Execution{
+	if err := o.execHandler.PublishExecution(&Execution{
 		ExecType:     ExecutePendingCancel,
 		OrdStatus:    o.Status,
 		ClOrdID:      o.ClientID,
@@ -160,11 +161,13 @@ func (o *Order) ExecuteCancelReq() {
 		ExecID:       uuid.New().String(),
 		TransactTime: time.Now().Unix(),
 		OrdType:      o.OrdType,
-	})
+	}); err != nil {
+		log.Printf("error publishing cancel request: %s", err.Error())
+	}
 }
 func (o *Order) ExecuteReject() {
 	o.Status = Rejected
-	o.execHandler.AddExecution(&Execution{
+	if err := o.execHandler.PublishExecution(&Execution{
 		ExecType:     ExecuteReject,
 		OrdStatus:    o.Status,
 		ClOrdID:      o.ClientID,
@@ -180,7 +183,9 @@ func (o *Order) ExecuteReject() {
 		ExecID:       uuid.New().String(),
 		TransactTime: time.Now().Unix(),
 		OrdType:      o.OrdType,
-	})
+	}); err != nil {
+		log.Printf("error publishing reject request: %s", err.Error())
+	}
 }
 
 func (o *Order) ExecuteTrade(qty int, price float64) {
@@ -193,7 +198,7 @@ func (o *Order) ExecuteTrade(qty int, price float64) {
 		o.Status = Filled
 	}
 
-	o.execHandler.AddExecution(&Execution{
+	if err := o.execHandler.PublishExecution(&Execution{
 		ExecType:     ExecuteFill,
 		OrdStatus:    o.Status,
 		ClOrdID:      o.ClientID,
@@ -209,12 +214,14 @@ func (o *Order) ExecuteTrade(qty int, price float64) {
 		ExecID:       uuid.New().String(),
 		TransactTime: time.Now().Unix(),
 		OrdType:      o.OrdType,
-	})
+	}); err != nil {
+		log.Printf("error publishing trade request: %s", err.Error())
+	}
 }
 
 func (o *Order) ExecuteCancel() {
 	o.Status = Cancelled
-	o.execHandler.AddExecution(&Execution{
+	if err := o.execHandler.PublishExecution(&Execution{
 		ExecType:     ExecuteCancel,
 		OrdStatus:    o.Status,
 		ClOrdID:      o.ClientID,
@@ -230,7 +237,9 @@ func (o *Order) ExecuteCancel() {
 		ExecID:       uuid.New().String(),
 		TransactTime: time.Now().Unix(),
 		OrdType:      o.OrdType,
-	})
+	}); err != nil {
+		log.Printf("error publishing cancel request: %s", err.Error())
+	}
 }
 
 func (o *Order) IsReqProcessed(price float64, comp Comparator) bool {

@@ -73,7 +73,10 @@ func (ob *orderBook) runOrderBook(ctx context.Context, orderChan chan *models.Or
 
 	for {
 		select {
-		case req := <-orderChan:
+		case req, ok := <-orderChan:
+			if !ok {
+				continue
+			}
 			req.OnNewOrderReq(ob.handler)
 
 			switch req.ReqType {
@@ -95,10 +98,6 @@ func (ob *orderBook) runOrderBook(ctx context.Context, orderChan chan *models.Or
 			default:
 				req.ExecuteReject()
 				log.Printf("Unknown order[%s] type %s", req.ClientID, req.ReqType)
-			}
-
-			if err := ob.handler.PublishExecutions(); err != nil {
-				log.Printf("Error publishing executions: %v", err)
 			}
 
 		case <-ctx.Done():

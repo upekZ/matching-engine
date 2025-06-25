@@ -30,7 +30,10 @@ func New() (*Client, error) {
 	return &Client{client: client}, nil
 }
 
-func (c *Client) PublishOrderResponse(ctx context.Context, market string, execReport models.ExecutionReport) error {
+func (c *Client) PublishExecution(ctx context.Context, market string, exec *models.Execution) error {
+
+	execReport := make(models.ExecutionReport)
+	execReport[exec.ClOrdID] = append(execReport[exec.ClOrdID], exec)
 
 	data, err := json.Marshal(execReport)
 	if err != nil {
@@ -68,7 +71,6 @@ func (c *Client) SubscribeToResponses(ctx context.Context, market string, respon
 		var modelResp models.ExecutionReport
 		if err := json.Unmarshal([]byte(msg.Payload), &modelResp); err != nil {
 			log.Printf("Error unmarshalling response: %v", err)
-			log.Printf("Failed to unmarshal response: %v", err)
 			continue
 		}
 

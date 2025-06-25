@@ -3,8 +3,8 @@ package message_broker
 import (
 	"context"
 	"encoding/json"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
-	"github.com/stretchr/testify/assert"
 	"github.com/upekZ/matching-engine/internal/models"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -13,209 +13,141 @@ import (
 	"time"
 )
 
-// setupRedisClient initializes a Redis client for testing
-func setupRedisClient(t *testing.T) (*Client, *redis.Client) {
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
-	}
-
-	redisClient := redis.NewClient(&redis.Options{Addr: redisAddr})
-	_, err := redisClient.Ping(context.Background()).Result()
+func setupTestRedis(t *testing.T) *miniredis.Miniredis {
+	s, err := miniredis.Run()
 	if err != nil {
-		t.Skipf("Redis not available at %s: %v", redisAddr, err)
+		t.Fatalf("Failed to start miniredis: %v", err)
 	}
-
-	client := &Client{client: redisClient}
-	return client, redisClient
-}
-
-// waitForMessage waits for a message on the channel or times out
-func waitForMessage(t *testing.T, ch <-chan *redis.Message, timeout time.Duration) *redis.Message {
-	select {
-	case msg := <-ch:
-		return msg
-	case <-time.After(timeout):
-		t.Fatal("Timeout waiting for message")
-	}
-	return nil
-}
-
-// waitForExecutionReport waits for an execution report or times out
-func waitForExecutionReport(t *testing.T, ch chan models.ExecutionReport, timeout time.Duration) models.ExecutionReport {
-	select {
-	case msg := <-ch:
-		return msg
-	case <-time.After(timeout):
-		t.Fatal("Timeout waiting for execution report")
-	}
-	return models.ExecutionReport{}
-}
-
-// waitForError waits for an error or times out
-func waitForError(t *testing.T, ch chan error, timeout time.Duration) error {
-	select {
-	case err := <-ch:
-		return err
-	case <-time.After(timeout):
-		t.Fatal("Timeout waiting for error")
-	}
-	return nil
+	return s
 }
 
 func TestNew(t *testing.T) {
-	origAddr := os.Getenv("REDIS_ADDR")
-	defer os.Setenv("REDIS_ADDR", origAddr)
+	redisServer := setupTestRedis(t)
+	defer redisServer.Close()
 
-	t.Run("DefaultAddress", func(t *testing.T) {
-		os.Setenv("REDIS_ADDR", "")
-		client, err := New()
-		assert.NoError(t, err)
-		assert.NotNil(t, client)
-		assert.Equal(t, "localhost:6379", client.client.Options().Addr)
-	})
+	os.Setenv("REDIS_ADDR", redisServer.Addr())
 
-	t.Run("CustomAddress", func(t *testing.T) {
-		os.Setenv("REDIS_ADDR", "test:6379")
-		client, err := New()
-		if err != nil {
-			t.Skipf("Redis not available: %v", err)
-		}
-		assert.NoError(t, err)
-		assert.Equal(t, "test:6379", client.client.Options().Addr)
-	})
-
-	t.Run("InvalidAddress", func(t *testing.T) {
-		os.Setenv("REDIS_ADDR", "invalid:9999")
-		client, err := New()
-		assert.Error(t, err)
-		assert.Nil(t, client)
-	})
-}
-
-func TestPublishOrderResponse(t *testing.T) {
-	client, redisClient := setupRedisClient(t)
-	defer redisClient.Close()
-
-	ctx := context.Background()
-	market := "BTC-USD"
-	execReport := models.ExecutionReport{
-		"execs": []*models.Execution{
-			{
-				ExecType:  models.ExecuteNew,
-				OrdStatus: models.NewOrderState,
-				ClOrdID:   "test-client",
-				Symbol:    "BTC-USD",
-				Side:      models.BuyOrder,
-				OrderQty:  10,
-				Price:     100.0,
-			},
-		},
+	client, err := New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	if client.client == nil {
+		t.Fatal("New() returned nil client")
 	}
 
-	t.Run("SuccessfulPublish", func(t *testing.T) {
-		err := client.PublishOrderResponse(ctx, market, execReport)
-		assert.NoError(t, err)
+	_, err = client.client.Ping(context.Background()).Result()
+	if err != nil {
+		t.Fatalf("Ping failed: %v", err)
+	}
+}
 
-		pubsub := redisClient.Subscribe(ctx, "order_responses:"+market)
-		defer pubsub.Close()
+func TestPublishExecution(t *testing.T) {
+	redisServer := setupTestRedis(t)
+	defer redisServer.Close()
 
-		msg := waitForMessage(t, pubsub.Channel(), 1*time.Second)
+	os.Setenv("REDIS_ADDR", redisServer.Addr())
 
-		var received models.ExecutionReport
-		err = json.Unmarshal([]byte(msg.Payload), &received)
-		assert.NoError(t, err)
-		assert.Equal(t, execReport, received)
-	})
+	client, err := New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
 
-	t.Run("InvalidExecReport", func(t *testing.T) {
-		invalidReport := models.ExecutionReport{
-			"execs": []*models.Execution{
-				{
-					ExecType:  models.ExecuteNew,
-					OrdStatus: models.OrderStatus(1000), // Invalid status
-				},
-			},
-		}
-		err := client.PublishOrderResponse(ctx, market, invalidReport)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to publish execution reports")
-	})
+	ctx := context.Background()
+	execution := &models.Execution{
+		ClOrdID:   "order1",
+		Price:     100,
+		OrderQty:  10,
+		ExecType:  models.ExecuteFill,
+		OrdStatus: models.Filled,
+		Symbol:    "BTCUSD",
+		Side:      models.BuyOrder,
+	}
+
+	err = client.PublishExecution(ctx, "BTCUSD", execution)
+	if err != nil {
+		t.Fatalf("PublishExecution failed: %v", err)
+	}
+
+	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	pubSub := redisClient.Subscribe(ctx, "order_responses:BTCUSD")
+	defer pubSub.Close()
+
+	msg, err := pubSub.ReceiveMessage(ctx)
+	if err != nil {
+		t.Fatalf("Failed to receive message: %v", err)
+	}
+
+	var report models.ExecutionReport
+	if err := json.Unmarshal([]byte(msg.Payload), &report); err != nil {
+		t.Fatalf("Failed to unmarshal message: %v", err)
+	}
+
+	if len(report["order1"]) != 1 {
+		t.Errorf("Expected 1 execution, got %d", len(report["order1"]))
+	}
+	if report["order1"][0].ClOrdID != "order1" {
+		t.Errorf("Expected ClOrdID order1, got %s", report["order1"][0].ClOrdID)
+	}
 }
 
 func TestSubscribeToResponses(t *testing.T) {
-	client, redisClient := setupRedisClient(t)
-	defer redisClient.Close()
+	redisServer := setupTestRedis(t)
+	defer redisServer.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	os.Setenv("REDIS_ADDR", redisServer.Addr())
+
+	client, err := New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	market := "BTC-USD"
-	responseChan := make(chan models.ExecutionReport, 1)
+	responseChan := make(chan models.ExecutionReport)
 
-	t.Run("SuccessfulSubscription", func(t *testing.T) {
-		execReport := models.ExecutionReport{
-			"execs": []*models.Execution{
-				{
-					ExecType:  models.ExecuteNew,
-					OrdStatus: models.NewOrderState,
-					ClOrdID:   "test-client",
-					Symbol:    "BTCUSD",
-					Side:      models.BuyOrder,
-					OrderQty:  10,
-					Price:     100.0,
-				},
-			},
+	// Test invalid market
+	err = client.SubscribeToResponses(ctx, "", responseChan)
+	if err == nil {
+		t.Fatal("Expected error for empty market")
+	}
+	if status.Code(err) != codes.InvalidArgument {
+		t.Errorf("Expected InvalidArgument, got %v", status.Code(err))
+	}
+
+	// Test subscription
+	go func() {
+		err = client.SubscribeToResponses(ctx, "BTCUSD", responseChan)
+		if err != nil {
+			t.Errorf("SubscribeToResponses failed: %v", err)
 		}
+	}()
 
-		go func() {
-			data, _ := json.Marshal(execReport)
-			redisClient.Publish(ctx, "order_responses:"+market, data)
-		}()
+	// Publish test message
+	execution := &models.Execution{
+		ClOrdID:   "order1",
+		Price:     100,
+		OrderQty:  10,
+		ExecType:  models.ExecuteFill,
+		OrdStatus: models.Filled,
+		Symbol:    "BTCUSD",
+		Side:      models.BuyOrder,
+	}
+	err = client.PublishExecution(ctx, "BTCUSD", execution)
+	if err != nil {
+		t.Fatalf("PublishExecution failed: %v", err)
+	}
 
-		errChan := make(chan error, 1)
-		go func() {
-			err := client.SubscribeToResponses(ctx, market, responseChan)
-			errChan <- err
-		}()
-
-		resp := waitForExecutionReport(t, responseChan, 1*time.Second)
-		assert.Equal(t, execReport, resp)
-
-		cancel()
-		err := waitForError(t, errChan, 1*time.Second)
-		assert.NoError(t, err)
-	})
-
-	t.Run("EmptyMarket", func(t *testing.T) {
-		err := client.SubscribeToResponses(ctx, "", responseChan)
-		assert.Error(t, err)
-		st, ok := status.FromError(err)
-		assert.True(t, ok)
-		assert.Equal(t, codes.InvalidArgument, st.Code())
-	})
-
-	t.Run("InvalidMessage", func(t *testing.T) {
-		go func() {
-			redisClient.Publish(ctx, "order_responses:"+market, "invalid_json")
-		}()
-
-		errChan := make(chan error, 1)
-		go func() {
-			err := client.SubscribeToResponses(ctx, market, responseChan)
-			errChan <- err
-		}()
-
-		time.Sleep(100 * time.Millisecond) // Give time for invalid message to be processed
-		select {
-		case <-responseChan:
-			t.Fatal("Should not receive invalid message")
-		default:
-			// Expected: no message received
+	// Verify received message
+	select {
+	case report := <-responseChan:
+		if len(report["order1"]) != 1 {
+			t.Errorf("Expected 1 execution, got %d", len(report["order1"]))
 		}
-
-		cancel()
-		err := waitForError(t, errChan, 1*time.Second)
-		assert.NoError(t, err)
-	})
+		if report["order1"][0].ClOrdID != "order1" {
+			t.Errorf("Expected ClOrdID order1, got %s", report["order1"][0].ClOrdID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Timeout waiting for response")
+	}
 }

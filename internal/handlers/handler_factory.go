@@ -11,7 +11,7 @@ type CacheStore interface {
 }
 
 type MsgBroker interface {
-	PublishOrderResponse(ctx context.Context, market string, exec models.ExecutionReport) error
+	PublishExecution(ctx context.Context, market string, exec *models.Execution) error
 	SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error
 }
 
