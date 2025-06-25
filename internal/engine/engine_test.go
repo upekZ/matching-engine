@@ -22,12 +22,24 @@ func (m *mockExecHandler) PublishExecutions() error {
 	return m.publishErr
 }
 
+type mockTradeHandler struct {
+}
+
+func (m *mockTradeHandler) PublishTrade(trade *models.TradeReport) error {
+	return nil
+}
+
 type mockHandlerFactory struct {
-	handler *mockExecHandler
+	execHandler  *mockExecHandler
+	tradeHandler *mockTradeHandler
 }
 
 func (m *mockHandlerFactory) NewExecHandler(_ string) models.ExecHandler {
-	return m.handler
+	return m.execHandler
+}
+
+func (m *mockHandlerFactory) NewTradeHandler(_ string) models.TradeHandler {
+	return m.tradeHandler
 }
 
 func submitOrder(reqChannel chan *models.Order, req *models.Order) {
@@ -51,14 +63,15 @@ func setupOrderBook(t *testing.T, market string) (*orderBook, chan *models.Order
 
 func setupEngine(t *testing.T) (*Engine, *mockHandlerFactory) {
 	handler := &mockExecHandler{}
-	factory := &mockHandlerFactory{handler: handler}
+	factory := &mockHandlerFactory{execHandler: handler}
 	return New(factory), factory
 }
 
 func TestNewOrderBook(t *testing.T) {
-	handler := &mockExecHandler{}
+	execHandler := &mockExecHandler{}
+	tradeHandler := &mockTradeHandler{}
 	market := "BTC-USD"
-	ch := newOrderBook(context.Background(), market, handler)
+	ch := newOrderBook(context.Background(), market, execHandler, tradeHandler)
 
 	assert.NotNil(t, ch, "Channel should be created")
 	assert.Equal(t, 200, cap(ch), "Channel capacity should be 200")
