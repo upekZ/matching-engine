@@ -1,0 +1,51 @@
+services:
+  app:
+    image: golang:1.24-alpine
+    container_name: matchingEngineApp
+    volumes:
+      - ../:/app
+    working_dir: /app
+    environment:
+      - POSTGRES_ADDR=postgres:5432
+      - REDIS_ADDR=redis:6379
+    ports:
+      - "3000:3000"
+      - "8080:8080"
+    command: air -c .air.toml
+    depends_on:
+      - redis
+      - postgres
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -x
+        apk add --no-cache git
+        go install github.com/air-verse/air@v1.61.0
+        air -c .air.toml
+    networks:
+      - app-network
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+
+  postgres:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - ../internal/storage/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

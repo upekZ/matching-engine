@@ -47,6 +47,10 @@ type ExecHandler interface {
 	PublishExecution(exec *Execution) error
 }
 
+type TradeHandler interface {
+	PublishTrade(exec *TradeReport) error
+}
+
 type Order struct {
 	ID           string      `json:"id"`
 	ClientID     string      `json:"client_id"`

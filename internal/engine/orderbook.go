@@ -49,10 +49,11 @@ type orderBook struct {
 	sellOrderContainers *sellOrders
 	buyOrderContainers  *buyOrders
 	clientIDs           map[string]*OrderElement
-	handler             models.ExecHandler
+	execHandler         models.ExecHandler
+	tradeHandler        models.TradeHandler
 }
 
-func newOrderBook(ctx context.Context, market string, handler models.ExecHandler) chan *models.Order {
+func newOrderBook(ctx context.Context, market string, exechHandler models.ExecHandler, tradeHandler models.TradeHandler) chan *models.Order {
 
 	ob := &orderBook{
 		market: market,
@@ -60,8 +61,9 @@ func newOrderBook(ctx context.Context, market string, handler models.ExecHandler
 		sellOrderContainers: newSellContainers(),
 		buyOrderContainers:  newBuyContainers(),
 
-		clientIDs: make(map[string]*OrderElement),
-		handler:   handler,
+		clientIDs:    make(map[string]*OrderElement),
+		execHandler:  exechHandler,
+		tradeHandler: tradeHandler,
 	}
 	channel := make(chan *models.Order, 200)
 	go ob.runOrderBook(ctx, channel)
@@ -77,7 +79,7 @@ func (ob *orderBook) runOrderBook(ctx context.Context, orderChan chan *models.Or
 			if !ok {
 				continue
 			}
-			req.OnNewOrderReq(ob.handler)
+			req.OnNewOrderReq(ob.execHandler)
 
 			switch req.ReqType {
 
@@ -256,7 +258,7 @@ func (ob *orderBook) executeTrade(order *models.Order, bookOrder *models.Order, 
 	bookOrder.ExecuteTrade(tradeQty, price)
 	order.ExecuteTrade(tradeQty, price)
 
-	//ToDo publish Trades for MarketData
+	models.NewTrade(tradeQty, price, ob.market, ob.tradeHandler)
 }
 
 func (ob *orderBook) getOBContainers(side models.OrderSide) (PriceToOrderMap, *rbt.Tree) {

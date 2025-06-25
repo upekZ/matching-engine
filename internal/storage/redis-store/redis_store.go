@@ -72,3 +72,16 @@ func (c *Client) ClearStoredExecutions(ctx context.Context, keys []string) error
 
 	return nil
 }
+
+func (c *Client) SaveTrade(trade *models.TradeReport) error {
+
+	data, err := json.Marshal(trade)
+	if err != nil {
+		return err
+	}
+
+	if err := c.client.Set(context.Background(), "execution:"+trade.ExecID, data, 0).Err(); err != nil {
+		return err
+	}
+	return nil
+}

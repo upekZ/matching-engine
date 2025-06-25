@@ -42,7 +42,7 @@ func setupOrderBook(t *testing.T, market string) (*orderBook, chan *models.Order
 		sellOrderContainers: newSellContainers(),
 		buyOrderContainers:  newBuyContainers(),
 		clientIDs:           make(map[string]*OrderElement),
-		handler:             handler,
+		execHandler:         handler,
 	}
 	ch := make(chan *models.Order, 200)
 	go ob.runOrderBook(context.Background(), ch)

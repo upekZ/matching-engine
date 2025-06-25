@@ -149,7 +149,7 @@ curl -X POST http://localhost:3000/orders -H "Content-Type: application/json" -d
 
 - Support Stop and StopLoss Order Types
 - Support modify/amend order functionality
-- Separate Redis for store and broker
+- Separate Redis for cacheStore and broker
 - Implement WebSocket with gRPC
 
 ---

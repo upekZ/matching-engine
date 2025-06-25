@@ -7,22 +7,22 @@ import (
 )
 
 type ExecHandler struct {
-	store     CacheStore
-	msgBroker MsgBroker
-	market    string
+	cacheStore CacheStore
+	msgBroker  MsgBroker
+	market     string
 }
 
 func NewExecHandler(store CacheStore, msgBroker MsgBroker, market string) *ExecHandler {
 	return &ExecHandler{
-		store:     store,
-		msgBroker: msgBroker,
-		market:    market,
+		cacheStore: store,
+		msgBroker:  msgBroker,
+		market:     market,
 	}
 }
 
 func (h *ExecHandler) PublishExecution(exec *models.Execution) error {
 
-	if err := h.store.SaveExecution(exec); err != nil {
+	if err := h.cacheStore.SaveExecution(exec); err != nil {
 		log.Printf("failed to save execution: %v\n", err)
 		return err
 	}

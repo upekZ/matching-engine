@@ -12,6 +12,7 @@ type CacheStore interface {
 
 type MsgBroker interface {
 	PublishExecution(ctx context.Context, market string, exec *models.Execution) error
+	PublishTrade(ctx context.Context, market string, exec *models.TradeReport) error
 	SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error
 }
 
@@ -29,6 +30,10 @@ func NewHandlerFactory(store CacheStore, msgBroker MsgBroker) *DefaultHandlerFac
 
 func (f *DefaultHandlerFactory) NewExecHandler(market string) models.ExecHandler {
 	return NewExecHandler(f.store, f.msgBroker, market)
+}
+
+func (f *DefaultHandlerFactory) NewTradeHandler(market string) models.TradeHandler {
+	return NewTradeHandler(f.store, f.msgBroker, market)
 }
 
 func (f *DefaultHandlerFactory) SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error {

@@ -9,6 +9,7 @@ import (
 
 type HandlerFactory interface {
 	NewExecHandler(market string) models.ExecHandler
+	NewTradeHandler(market string) models.TradeHandler
 }
 
 type Engine struct {
@@ -42,7 +43,7 @@ func (e *Engine) OnNewRequest(orderReq *models.Order) models.Order {
 
 func (e *Engine) addNewOrderBook(symbol string) chan *models.Order {
 
-	reqChannel := newOrderBook(context.Background(), symbol, e.HandlerFactory.NewExecHandler(symbol))
+	reqChannel := newOrderBook(context.Background(), symbol, e.HandlerFactory.NewExecHandler(symbol), e.HandlerFactory.NewTradeHandler(symbol))
 
 	if loadedChannel, exists := e.reqChannels.LoadOrStore(symbol, reqChannel); exists {
 		reqChannel = loadedChannel.(chan *models.Order)

@@ -46,6 +46,19 @@ func (c *Client) PublishExecution(ctx context.Context, market string, exec *mode
 	return nil
 }
 
+func (c *Client) PublishTrade(ctx context.Context, market string, trade *models.TradeReport) error {
+
+	data, err := json.Marshal(trade)
+	if err != nil {
+		log.Printf("Error marshalling trade: %v", err)
+		return fmt.Errorf("failed to publish trade reports")
+	}
+	if err := c.client.Publish(ctx, "trade:"+market, data).Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (c *Client) SubscribeToResponses(ctx context.Context, market string, responseChannel chan<- models.ExecutionReport) error {
 	if market == "" {
 		return status.Error(codes.InvalidArgument, "Symbol must be specified")
