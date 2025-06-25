@@ -40,7 +40,7 @@ func main() {
 	server := rest.New(eng)
 
 	//db-engine can run in isolation with a cache reader
-	if dbErr := storage.New(ctx, sqlc2.CreateDBHandler(), redisCacheClient, 1000000, 1000); dbErr != nil {
+	if dbErr := storage.New(ctx, sqlc2.CreateDBHandler(), redisCacheClient); dbErr != nil {
 		log.Printf("DB Start Failure: %v", dbErr)
 	}
 

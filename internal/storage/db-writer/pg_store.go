@@ -22,21 +22,17 @@ type DBHandler interface {
 
 type DbEngine struct {
 	executionQueue  chan []*models.Execution
-	maxBatchSize    int
-	batchSize       int
 	executionClient ExecutionFeeder
 	ctx             context.Context
 	cancel          context.CancelFunc
 	dbHandler       DBHandler
 }
 
-func New(ctx context.Context, dbHandler DBHandler, cacheClient ExecutionFeeder, maxBatchSize int, batchSize int) error {
+func New(ctx context.Context, dbHandler DBHandler, cacheClient ExecutionFeeder) error {
 	cancelCtx, cancel := context.WithCancel(ctx)
 
 	engine := &DbEngine{
-		executionQueue:  make(chan []*models.Execution, batchSize),
-		maxBatchSize:    maxBatchSize,
-		batchSize:       batchSize,
+		executionQueue:  make(chan []*models.Execution, 1000),
 		executionClient: cacheClient,
 		ctx:             cancelCtx,
 		cancel:          cancel,
@@ -54,21 +50,6 @@ func (e *DbEngine) startExecWriter() {
 
 	for {
 		select {
-		case exec, ok := <-e.executionQueue:
-			if !ok {
-				if err := e.flushExecutions(batch); err != nil {
-					log.Printf("Unable to flush executions: %v\n", err)
-				}
-				return
-			}
-
-			batch = append(batch, exec...)
-			if len(batch) >= e.maxBatchSize {
-				if err := e.flushExecutions(batch); err != nil {
-					log.Printf("Unable to flush executions: %v\n", err)
-				}
-				batch = nil
-			}
 
 		case <-ticker.C:
 			executions, keys, err := e.executionClient.GetExecutions(context.Background())
