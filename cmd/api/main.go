@@ -48,5 +48,4 @@ func main() {
 		log.Fatalf("Error starting Rest server: %v", err)
 	}
 
-	// OS signals should be handled. Wait for the context and flush logs before terminating
 }
