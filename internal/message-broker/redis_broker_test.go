@@ -59,17 +59,17 @@ func TestPublishExecution(t *testing.T) {
 		OrderQty:  10,
 		ExecType:  models.ExecuteFill,
 		OrdStatus: models.Filled,
-		Symbol:    "BTCUSD",
+		Symbol:    "BTC-USD",
 		Side:      models.BuyOrder,
 	}
 
-	err = client.PublishExecution(ctx, "BTCUSD", execution)
+	err = client.PublishExecution(ctx, "BTC-USD", execution)
 	if err != nil {
 		t.Fatalf("PublishExecution failed: %v", err)
 	}
 
 	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
-	pubSub := redisClient.Subscribe(ctx, "order_responses:BTCUSD")
+	pubSub := redisClient.Subscribe(ctx, "order_responses:BTC-USD")
 	defer pubSub.Close()
 
 	msg, err := pubSub.ReceiveMessage(ctx)
@@ -106,7 +106,6 @@ func TestSubscribeToResponses(t *testing.T) {
 
 	responseChan := make(chan models.ExecutionReport)
 
-	// Test invalid market
 	err = client.SubscribeToResponses(ctx, "", responseChan)
 	if err == nil {
 		t.Fatal("Expected error for empty market")
@@ -115,30 +114,30 @@ func TestSubscribeToResponses(t *testing.T) {
 		t.Errorf("Expected InvalidArgument, got %v", status.Code(err))
 	}
 
-	// Test subscription
+	//
+	//===
+	//
 	go func() {
-		err = client.SubscribeToResponses(ctx, "BTCUSD", responseChan)
+		err = client.SubscribeToResponses(ctx, "BTC-USD", responseChan)
 		if err != nil {
 			t.Errorf("SubscribeToResponses failed: %v", err)
 		}
 	}()
 
-	// Publish test message
 	execution := &models.Execution{
 		ClOrdID:   "order1",
 		Price:     100,
 		OrderQty:  10,
 		ExecType:  models.ExecuteFill,
 		OrdStatus: models.Filled,
-		Symbol:    "BTCUSD",
+		Symbol:    "BTC-USD",
 		Side:      models.BuyOrder,
 	}
-	err = client.PublishExecution(ctx, "BTCUSD", execution)
+	err = client.PublishExecution(ctx, "BTC-USD", execution)
 	if err != nil {
 		t.Fatalf("PublishExecution failed: %v", err)
 	}
 
-	// Verify received message
 	select {
 	case report := <-responseChan:
 		if len(report["order1"]) != 1 {

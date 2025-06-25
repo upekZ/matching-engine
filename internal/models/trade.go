@@ -31,7 +31,7 @@ func NewTrade(qty int, price float64, symbol string, handler TradeHandler) {
 		Symbol:        symbol,
 		LastQty:       qty,
 		LastPx:        price,
-		TradeDate:     time.Now().Format("2006-01-02"),
+		TradeDate:     time.Now().Format("20060102"),
 		TransactTime:  time.Now().Unix(),
 		NoSides:       []NoSides{},
 	}

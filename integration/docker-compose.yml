@@ -27,26 +27,48 @@ services:
       - app-network
 
   matching-engine-integration:
-    image: app
+    image: golang:1.24-alpine
+    container_name: matching-engine-integration
+    volumes:
+      - ../:/app
+    working_dir: /app
     environment:
       - POSTGRES_ADDR=postgres:5432
       - REDIS_ADDR=redis:6379
-    command: ["go", "test", "-v", "./tests/integration_test.go"]
     depends_on:
       - redis
       - postgres
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -x
+        apk add --no-cache git
+        go mod download
+        go test -v ./tests/integration_test.go
     networks:
       - app-network
 
   matching-engine-unit-tests:
-    image: app
+    image: golang:1.24-alpine
+    container_name: matching-engine-unit-tests
+    volumes:
+      - ../:/app
+    working_dir: /app
     environment:
       - POSTGRES_ADDR=postgres:5432
       - REDIS_ADDR=redis:6379
-    command: ["go", "test", "-v", "./internal/engine"]
     depends_on:
       - redis
       - postgres
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -x
+        apk add --no-cache git
+        go mod download
+        go test -v ./internal/engine ./internal/message-broker
     networks:
       - app-network
 

@@ -47,18 +47,22 @@ func submitOrder(reqChannel chan *models.Order, req *models.Order) {
 	time.Sleep(10 * time.Millisecond)
 }
 
-func setupOrderBook(t *testing.T, market string) (*orderBook, chan *models.Order, *mockExecHandler) {
-	handler := &mockExecHandler{}
+func setupOrderBook(t *testing.T, market string) (*orderBook, chan *models.Order, *mockExecHandler, *mockTradeHandler) {
+	execHandler := &mockExecHandler{}
+
+	tradeHandler := &mockTradeHandler{}
 	ob := &orderBook{
 		market:              market,
 		sellOrderContainers: newSellContainers(),
 		buyOrderContainers:  newBuyContainers(),
 		clientIDs:           make(map[string]*OrderElement),
-		execHandler:         handler,
+		execHandler:         execHandler,
+		tradeHandler:        tradeHandler,
 	}
+
 	ch := make(chan *models.Order, 200)
 	go ob.runOrderBook(context.Background(), ch)
-	return ob, ch, handler
+	return ob, ch, execHandler, tradeHandler
 }
 
 func setupEngine(t *testing.T) (*Engine, *mockHandlerFactory) {
@@ -78,7 +82,7 @@ func TestNewOrderBook(t *testing.T) {
 }
 
 func TestOrderBook_AddBuyRequest(t *testing.T) {
-	ob, ch, _ := setupOrderBook(t, "BTC-USD")
+	ob, ch, _, _ := setupOrderBook(t, "BTC-USD")
 	defer close(ch)
 
 	order := &models.Order{
@@ -98,7 +102,7 @@ func TestOrderBook_AddBuyRequest(t *testing.T) {
 }
 
 func TestOrderBook_AddSellRequest(t *testing.T) {
-	ob, ch, _ := setupOrderBook(t, "BTC-USD")
+	ob, ch, _, _ := setupOrderBook(t, "BTC-USD")
 	defer close(ch)
 
 	order := &models.Order{
@@ -119,7 +123,7 @@ func TestOrderBook_AddSellRequest(t *testing.T) {
 }
 
 func TestOrderBook_CancelOrder(t *testing.T) {
-	ob, ch, handler := setupOrderBook(t, "BTC-USD")
+	ob, ch, handler, _ := setupOrderBook(t, "BTC-USD")
 	defer close(ch)
 	order := &models.Order{
 		ClientID: "1",
@@ -149,7 +153,7 @@ func TestOrderBook_CancelOrder(t *testing.T) {
 }
 
 func TestOrderBook_MatchOrder(t *testing.T) {
-	ob, ch, handler := setupOrderBook(t, "BTC-USD")
+	ob, ch, handler, _ := setupOrderBook(t, "BTC-USD")
 	defer close(ch)
 	sellOrder := &models.Order{
 		ClientID: "1",
