@@ -114,9 +114,6 @@ func TestSubscribeToResponses(t *testing.T) {
 		t.Errorf("Expected InvalidArgument, got %v", status.Code(err))
 	}
 
-	//
-	//===
-	//
 	go func() {
 		err = client.SubscribeToResponses(ctx, "BTC-USD", responseChan)
 		if err != nil {

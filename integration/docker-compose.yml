@@ -11,10 +11,6 @@ services:
     ports:
       - "3000:3000"
       - "8080:8080"
-    command: air -c .air.toml
-    depends_on:
-      - redis
-      - postgres
     entrypoint:
       - sh
       - -c
@@ -22,30 +18,11 @@ services:
         set -x
         apk add --no-cache git
         go install github.com/air-verse/air@v1.61.0
+        go mod download
         air -c .air.toml
-    networks:
-      - app-network
-
-  matching-engine-integration:
-    image: golang:1.24-alpine
-    container_name: matching-engine-integration
-    volumes:
-      - ../:/app
-    working_dir: /app
-    environment:
-      - POSTGRES_ADDR=postgres:5432
-      - REDIS_ADDR=redis:6379
     depends_on:
       - redis
       - postgres
-    entrypoint:
-      - sh
-      - -c
-      - |
-        set -x
-        apk add --no-cache git
-        go mod download
-        go test -v ./tests/integration_test.go
     networks:
       - app-network
 
@@ -68,7 +45,7 @@ services:
         set -x
         apk add --no-cache git
         go mod download
-        go test -v ./internal/engine ./internal/message-broker
+        tail -f /dev/null  # Keep container running
     networks:
       - app-network
 

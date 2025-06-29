@@ -6,9 +6,6 @@ import (
 	"encoding/json"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
-	"github.com/upekZ/matching-engine/internal/api/rest"
-	"github.com/upekZ/matching-engine/internal/engine"
-	"github.com/upekZ/matching-engine/internal/handlers"
 	redisBroker "github.com/upekZ/matching-engine/internal/message-broker"
 	"github.com/upekZ/matching-engine/internal/models"
 	redisCache "github.com/upekZ/matching-engine/internal/storage/redis-store"
@@ -18,7 +15,7 @@ import (
 	"time"
 )
 
-func setupTestServer(t *testing.T) (*rest.Server, *redisCache.Client, *redisBroker.Client, func()) {
+func setupTestEnvironment(t *testing.T) (*http.Client, *redisCache.Client, *redisBroker.Client, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	msgBroker, err := redisBroker.New()
@@ -31,9 +28,12 @@ func setupTestServer(t *testing.T) (*rest.Server, *redisCache.Client, *redisBrok
 		t.Fatalf("Failed to connect to Redis cache: %v", err)
 	}
 
-	handlerFactory := handlers.NewHandlerFactory(redisClient, msgBroker)
-	matchingEngine := engine.New(handlerFactory)
-	server := rest.New(matchingEngine)
+	client := &http.Client{Timeout: 5 * time.Second}
+	baseURL := "http://localhost:3000"
+
+	if err := waitForServer(baseURL, client, 5*time.Second); err != nil {
+		t.Fatalf("Main application REST server not ready: %v", err)
+	}
 
 	cleanup := func() {
 		cancel()
@@ -45,7 +45,31 @@ func setupTestServer(t *testing.T) (*rest.Server, *redisCache.Client, *redisBrok
 		}
 	}
 
-	return server, redisClient, msgBroker, cleanup
+	return client, redisClient, msgBroker, cleanup
+}
+
+func waitForServer(baseURL string, client *http.Client, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			resp, err := client.Get(baseURL)
+			if err == nil && resp.StatusCode == http.StatusOK {
+				resp.Body.Close()
+				return nil
+			}
+			if resp != nil {
+				resp.Body.Close()
+			}
+		}
+	}
 }
 
 func submitOrder(t *testing.T, client *http.Client, baseURL string, order models.Order) {
@@ -96,17 +120,9 @@ func validateExecutions(t *testing.T, responseChannel <-chan models.ExecutionRep
 }
 
 func TestIntegrationMatchingEngine(t *testing.T) {
-	server, redisClient, msgBroker, cleanup := setupTestServer(t)
+	client, redisClient, msgBroker, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
-	go func() {
-		if err := server.Start(); err != nil && err.Error() != "http: Server closed" {
-			t.Errorf("Server failed to start: %v", err)
-		}
-	}()
-
-	time.Sleep(100 * time.Millisecond) // Wait for server to start
-	client := &http.Client{Timeout: 5 * time.Second}
 	baseURL := "http://localhost:3000"
 
 	// Clear Redis and order book before each test to avoid interference
