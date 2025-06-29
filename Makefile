@@ -25,9 +25,11 @@ int-test: start
 	@echo "Integration tests completed. Check logs with 'docker logs matchingEngineApp'"
 
 unit-test: start-unit-tests
-	@echo "Running unit tests in unit test service..."
-	$(DOCKER_COMPOSE) exec $(UNIT_TEST_SERVICE) sh -c "go test -v ./internal/engine ./internal/storage/redis-store"
-	@echo "Unit tests completed. Check logs with 'docker logs matching-engine-$(UNIT_TEST_SERVICE)-1'"
+	@echo "Running unit tests with coverage in unit test service..."
+	$(DOCKER_COMPOSE) exec $(UNIT_TEST_SERVICE) sh -c "go test -v -cover -coverprofile=coverage.out ./internal/engine ./internal/storage/redis-store ./internal/message-broker && go tool cover -func=coverage.out"
+	@echo "Unit tests completed. Coverage report generated in coverage.out"
+	@echo "Check logs with 'docker logs matching-engine-$(UNIT_TEST_SERVICE)-1'"
+	@echo "To view detailed coverage, run: docker cp matching-engine-$(UNIT_TEST_SERVICE)-1:/app/coverage.out . && go tool cover -html=coverage.out"
 
 clean:
 	$(DOCKER_COMPOSE) down --volumes --remove-orphans
